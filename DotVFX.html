@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dot VFX</title>
 <link rel="icon" href="logo.svg">
 <style>
@@ -39,6 +40,7 @@ button:hover{background:#44445e}
 h3{margin:12px 0 4px}
 #pal{width:170px;padding:6px;overflow:auto;background:#131627;border-right:1px solid #000}
 #q{width:100%;margin-bottom:4px}
+#graph,#tl,.split{touch-action:none} /* finger drags pan/wire/scrub instead of scrolling the page */
 .split{flex:none;background:#000}.split:hover{background:#3fd8e8}
 .split.v{width:5px;cursor:col-resize}.split.h{height:5px;cursor:row-resize}
 #tlBtn.on{background:#3fd8e8;color:#000}
@@ -306,7 +308,7 @@ function buildGraph() {
       dot.className = 'dot in'; dot.style.top = top + 'px'; dot.dataset.node = n.id; dot.dataset.in = i; dot.title = name;
       dot.oncontextmenu = e => { e.preventDefault(); n.in[i] = null; drawLinks(); touch(); };
       dot.onclick = e => { if (e.altKey) { n.in[i] = null; drawLinks(); touch(); } };
-      dot.onmousedown = e => {
+      dot.onpointerdown = e => {
         if (n.in[i] == null) return;
         e.stopPropagation(); drag = { k: 'link', from: n.in[i] };
         n.in[i] = null; drawLinks(); touch();
@@ -317,10 +319,10 @@ function buildGraph() {
     if (n.type !== 'output') {
       const o = document.createElement('div');
       o.className = 'dot out';
-      o.onmousedown = e => { e.stopPropagation(); drag = { k: 'link', from: n.id }; };
+      o.onpointerdown = e => { e.stopPropagation(); drag = { k: 'link', from: n.id }; };
       el.append(o); n.dout = o;
     }
-    el.onmousedown = e => {
+    el.onpointerdown = e => {
       if (e.shiftKey) return select(n.id, true);
       const keep = selSet.has(n.id) && selSet.size > 1; // keep group so it can be dragged together
       if (!keep) select(n.id); else { selId = n.id; showParams(); }
@@ -341,10 +343,10 @@ function drawLinks() {
 $('links').onclick = e => {
   if (e.target.dataset.to) { byId(+e.target.dataset.to).in[+e.target.dataset.i] = null; drawLinks(); touch(); }
 };
-graph.onmousedown = e => {
+graph.onpointerdown = e => {
   if (e.target === graph) drag = { k: 'pan', moved: false, sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
 };
-addEventListener('mousemove', e => {
+addEventListener('pointermove', e => {
   if (!drag) return;
   drag.moved = true;
   if (drag.k === 'pan') { pan.x = drag.px + e.clientX - drag.sx; pan.y = drag.py + e.clientY - drag.sy; applyPan(); }
@@ -356,7 +358,7 @@ addEventListener('mousemove', e => {
     drawLinks();
   } else { const f = byId(drag.from); $('tmp').setAttribute('d', bez(dotPos(f, f.dout), toWorld(e))); }
 });
-addEventListener('mouseup', e => {
+addEventListener('pointerup', e => {
   if (drag?.k === 'link') {
     const t = document.elementFromPoint(e.clientX, e.clientY);
     if (t?.dataset.in !== undefined) connect(drag.from, +t.dataset.node, +t.dataset.in);
@@ -485,14 +487,14 @@ const tlFrame = e => {
   setPlaying(false); setFrame(Math.floor(clamp((e.clientX - r.left) / r.width, 0, 0.9999) * S.frames));
 };
 $('tl').oncontextmenu = e => e.preventDefault();
-$('tl').onmousedown = e => {
+$('tl').onpointerdown = e => {
   const n = byId(selId), d = e.target.dataset;
   if (e.target.closest('#ruler')) { tld = true; tlFrame(e); }
   else if (d.f !== undefined) { if (e.button === 2 || e.altKey) delKey(n, d.k, +d.f); else { setPlaying(false); setFrame(+d.f); } }
   else if (d.k && n) { if (n.k[d.k]?.some(v => v[0] === frame)) delKey(n, d.k, frame); else setKey(n, d.k, frame, resolveParams(n, frame)[d.k]); showParams(); }
 };
-addEventListener('mousemove', e => { if (tld) tlFrame(e); });
-addEventListener('mouseup', () => (tld = false));
+addEventListener('pointermove', e => { if (tld) tlFrame(e); });
+addEventListener('pointerup', () => (tld = false));
 
 // ---------- settings, rendering ----------
 let frame = 0, playing = true, acc = 0, lastTs = 0;
@@ -672,15 +674,15 @@ function applyUI() {
   $('tl').hidden = $('tlSplit').hidden = !!ui.tlOff;
   $('tlBtn').classList.toggle('on', !ui.tlOff);
 }
-document.querySelectorAll('.split').forEach(s => s.onmousedown = e => {
+document.querySelectorAll('.split').forEach(s => s.onpointerdown = e => {
   e.preventDefault();
   const k = s.dataset.t, r = $(k).getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY;
   const mv = ev => {
     ui[k] = k === 'pal' ? clamp(r.width + ev.clientX - x0, 120, 480) : clamp(r.height - (ev.clientY - y0), 60, innerHeight * 0.6);
     applyUI();
   };
-  const up = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', up); saveUI(); };
-  addEventListener('mousemove', mv); addEventListener('mouseup', up);
+  const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); saveUI(); };
+  addEventListener('pointermove', mv); addEventListener('pointerup', up);
 });
 $('tlBtn').onclick = () => { ui.tlOff = !ui.tlOff; saveUI(); applyUI(); };
 applyUI();
