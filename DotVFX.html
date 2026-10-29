@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Dot VFX</title>
+<link rel="icon" href="logo.svg">
+<style>
+*{box-sizing:border-box}
+body{margin:0;height:100vh;display:flex;flex-direction:column;background:#0e1019;color:#d6d9e8;font:13px sans-serif}
+.bar{display:flex;gap:10px;align-items:center;padding:6px 10px;background:#161929;border-bottom:1px solid #000;flex-wrap:wrap}
+.bar input[type=number]{width:56px}
+.brand{display:flex;align-items:center;gap:6px;font-weight:700;font-size:15px;letter-spacing:.5px;color:#ffc83d;margin-right:6px}
+.brand img{width:24px;height:24px}
+main{flex:1;display:flex;min-height:0}
+#graph{flex:1;position:relative;overflow:hidden;background:#0b0d16;background-image:radial-gradient(#252a45 1px,transparent 1px);background-size:20px 20px}
+#world{position:absolute;left:0;top:0}
+#svg{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible}
+#svg path{fill:none;stroke:#7ad;stroke-width:3;pointer-events:stroke;cursor:pointer}
+#svg path:hover{stroke:#f77}
+#svg #tmp{stroke:#fc6;pointer-events:none}
+.node{position:absolute;width:140px;background:#1b1f33;border-radius:6px;outline:2px solid #2d3352;user-select:none}
+.node.sel{outline-color:#6cf}
+.node .t{padding:3px 8px;background:#2a2f4a;border-radius:6px 6px 0 0;cursor:move;border-top:3px solid #fff}
+.node .en{font:bold 11px monospace}
+#gbtns{position:absolute;right:10px;bottom:10px;display:flex;gap:6px}
+#tp{display:flex;gap:6px;align-items:center}#tp input{flex:1}
+.node canvas{display:block;margin:8px auto;image-rendering:pixelated}
+.dot{position:absolute;width:12px;height:12px;border-radius:50%;background:#7ad;border:2px solid #111;cursor:crosshair}
+.dot.in{left:-6px}.dot.out{right:-6px;top:50px;background:#fc6}
+.pl{position:absolute;left:10px;font-size:10px;color:#999;pointer-events:none}
+#side{width:340px;padding:10px;overflow:auto;background:#131627;border-left:1px solid #000}
+canvas.pv{image-rendering:pixelated;background:#111;display:block;margin:0 auto 8px}
+body.checker canvas.pv{background:repeating-conic-gradient(#555 0 25%,#777 0 50%) 0 0/16px 16px}
+.row{display:grid;grid-template-columns:90px 1fr 44px;gap:6px;align-items:center;margin:4px 0}
+.row output{font-size:11px;color:#9cf;text-align:right}
+button,select{background:#34344a;color:#ddd;border:1px solid #555;border-radius:4px;padding:4px 8px}
+button:hover{background:#44445e}
+#btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+h3{margin:12px 0 4px}
+#pal{width:170px;padding:6px;overflow:auto;background:#131627;border-right:1px solid #000}
+#q{width:100%;margin-bottom:4px}
+.split{flex:none;background:#000}.split:hover{background:#3fd8e8}
+.split.v{width:5px;cursor:col-resize}.split.h{height:5px;cursor:row-resize}
+#tlBtn.on{background:#3fd8e8;color:#000}
+#pal h4{margin:10px 0 2px;font-size:12px}#pal h4 i{display:inline-block;width:9px;height:9px;margin-right:6px}
+.tabs{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px}.tabs button{padding:1px 5px;font-size:11px}.tabs button.on{background:#4a5a9a;border-color:#6cf}.tabs i{display:inline-block;width:7px;height:7px;margin-right:3px;border-radius:50%}
+.pi{padding:3px 6px;margin:2px 0;background:#1b1f33;border-radius:4px;cursor:grab}
+.pi b{display:block;font:bold 11px monospace}.pi small{color:#99a;font-size:11px}
+#tl{flex:none;height:150px;overflow:auto;padding:4px 10px;background:#101322;border-top:1px solid #000}
+.tr{display:grid;grid-template-columns:110px 28px 1fr;gap:6px;align-items:center;height:22px;font-size:11px}
+.tr button{padding:0;height:18px}
+.trk{position:relative;height:18px;background:#1b1f33;border-radius:3px;overflow:hidden}
+#ruler{cursor:col-resize}
+.trk b{position:absolute;top:3px;font:9px monospace;color:#889;transform:translateX(-50%);pointer-events:none}
+.trk u{position:absolute;top:0;text-decoration:none;color:#fc6;transform:translateX(-50%);cursor:pointer;font-size:12px;line-height:18px}
+.trk i{position:absolute;top:0;bottom:0;background:rgba(255,90,90,.35);pointer-events:none}
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="brand"><img src="logo.svg" alt="">Dot VFX</span>
+  <label>크기 <select id="size"></select></label>
+  <label>프레임 <input id="frames" type="number" min="1" max="64" value="16"></label>
+  <label>FPS <input id="fps" type="number" min="1" max="60" value="12"></label>
+  <label><input id="loop" type="checkbox" checked> 루프</label>
+  <label>배경 <select id="bg"><option value="dark">어둡게</option><option value="checker">체크</option></select></label>
+  <select id="preset"><option value="">프리셋</option><option value="fire">불꽃</option><option value="hit">타격</option><option value="slash">참격</option><option value="heal">힐</option></select>
+  <button id="tlBtn" title="아래 타임라인 보이기/숨기기">타임라인</button>
+</div>
+<main>
+  <div id="pal"><input id="q" placeholder="검색 (영문/한글)"><div class="tabs" id="tabs"></div><div id="pl"></div></div>
+  <div class="split v" data-t="pal" title="드래그해서 폭 조절"></div>
+  <div id="graph"><div id="world"><svg id="svg"><g id="links"></g><path id="tmp"></path></svg></div>
+    <div id="gbtns"><button id="layout">자동 정렬</button><button id="fit">화면 맞춤</button></div></div>
+  <div id="side">
+    <canvas id="big" class="pv"></canvas>
+    <div id="tp"><button id="prev">◀</button><button id="play">❚❚</button><button id="next">▶</button>
+      <input id="scrub" type="range" min="0" max="15" value="0"><span id="finfo"></span></div>
+    <div id="params"></div>
+    <div id="btns">
+      <select id="scaleSel"><option>1</option><option>2</option><option>3</option><option>4</option></select>
+      <button id="exp">스프라이트시트 PNG 내보내기</button>
+      <button id="batch" hidden>일괄 내보내기</button>
+      <button id="save">JSON 저장</button>
+      <button id="load">JSON 불러오기</button>
+      <input id="file" type="file" accept=".json,application/json" hidden>
+    </div>
+  </div>
+</main>
+<div class="split h" id="tlSplit" data-t="tl" title="드래그해서 높이 조절"></div>
+<div id="tl"></div>
+<script>
+const $ = id => document.getElementById(id);
+const S = { W: 64, H: 64, frames: 16, fps: 12, bg: 'dark', loop: true };
+const tOf = f => (S.loop ? f / S.frames : f / Math.max(1, S.frames - 1)); // one-shot: t reaches 1 on last frame
+const lerp = (a, b, k) => a + (b - a) * k;
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const lerpC = (a, b, k) => a.map((v, i) => Math.round(lerp(v, b[i], k)));
+const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+const lum = (d, i) => (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
+const rng = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const hash = (x, y, s) => { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1274126177) | 0; h = Math.imul(h ^ h >>> 13, 1274126177); return ((h ^ h >>> 16) >>> 0) / 4294967296; };
+
+// tileable value noise with integer period P (seamless loop)
+function vnoise(u, v, P, s) {
+  const x0 = Math.floor(u), y0 = Math.floor(v);
+  const fx = u - x0, fy = v - y0, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const ix = ((x0 % P) + P) % P, iy = ((y0 % P) + P) % P, jx = (ix + 1) % P, jy = (iy + 1) % P;
+  return lerp(lerp(hash(ix, iy, s), hash(jx, iy, s), sx), lerp(hash(ix, jy, s), hash(jx, jy, s), sx), sy);
+}
+
+// hard-edged filled circle (row spans on integer coords)
+function disc(c, cx, cy, r) {
+  for (let yy = Math.floor(cy - r); yy <= Math.ceil(cy + r); yy++) {
+    const dy = yy + 0.5 - cy;
+    if (Math.abs(dy) > r) continue;
+    const half = Math.sqrt(r * r - dy * dy), x0 = Math.round(cx - half), x1 = Math.round(cx + half);
+    c.fillRect(x0, yy, Math.max(1, x1 - x0), 1);
+  }
+}
+
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const pix = cv => cv.getContext('2d').getImageData(0, 0, S.W, S.H).data;
+function rgb2hsv(r, g, b) {
+  const mx = Math.max(r, g, b), d = mx - Math.min(r, g, b);
+  const h = !d ? 0 : mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, mx ? d / mx : 0, mx / 255];
+}
+function hsv2rgb(h, s, v) {
+  const f = n => { const k = (n + h / 60) % 6; return (v - v * s * Math.max(0, Math.min(k, 4 - k, 1))) * 255; };
+  return [f(5), f(3), f(1)];
+}
+// input-pixel sampler: index of pixel (x,y) in RGBA data, or -1 if out of range. mode: 'nearest' (outside = -1) | 'wrap' | 'clamp'
+function sample(d, W, H, x, y, mode = 'nearest') {
+  x = Math.floor(x); y = Math.floor(y);
+  if (mode === 'wrap') { x = ((x % W) + W) % W; y = ((y % H) + H) % H; }
+  else if (mode === 'clamp') { x = clamp(x, 0, W - 1); y = clamp(y, 0, H - 1); }
+  else if (x < 0 || y < 0 || x >= W || y >= H) return -1;
+  return (y * W + x) * 4;
+}
+// midpoint displacement: each pass halves segments' length and the jitter
+function bolt(pts, jit, depth, r) {
+  for (let d = 0; d < depth; d++, jit /= 2) {
+    const out = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1, o = (r() - 0.5) * 2 * jit;
+      out.push([(a[0] + b[0]) / 2 - dy / l * o, (a[1] + b[1]) / 2 + dx / l * o], b);
+    }
+    pts = out;
+  }
+  return pts;
+}
+function line(c, x0, y0, x1, y1, s, o) { // Bresenham, s x s pixels, shifted by -o
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  for (let e = dx + dy; ; ) {
+    c.fillRect(x0 - o, y0 - o, s, s);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * e;
+    if (e2 >= dy) { e += dy; x0 += sx; }
+    if (e2 <= dx) { e += dx; y0 += sy; }
+  }
+}
+const IMG = new Map(); // data URL -> decoded <img>
+const decode = u => new Promise(r => { if (IMG.has(u)) return r(); const i = new Image(); i.onload = i.onerror = () => { IMG.set(u, i); r(); }; i.src = u; });
+const readURL = f => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+
+// ---------- node definitions ----------
+const N = (k, l, min, max, step, def) => ({ k, l, t: 'n', min, max, step, def });
+const Col = (k, l, def) => ({ k, l, t: 'c', def });
+const Sel = (k, l, opts, def) => ({ k, l, t: 's', opts, def });
+const Chk = (k, l, def) => ({ k, l, t: 'b', def });
+const Txt = (k, l, def) => ({ k, l, t: 't', def });
+
+const DEFS = {};
+function defNodes(defs) {
+  for (const k in defs) {
+    const D = defs[k];
+    if (k in DEFS) throw new Error(`defNodes: duplicate node "${k}"`);
+    for (const f of ['en', 'label', 'cat']) if (!D[f]) throw new Error(`defNodes: ${k} missing ${f}`);
+    if (!CATS[D.cat]) throw new Error(`defNodes: ${k} bad cat "${D.cat}"`);
+    if (typeof D.run !== 'function') throw new Error(`defNodes: ${k} missing run`);
+    DEFS[k] = D;
+  }
+}
+const CATS = { gen: ['생성', '#3fd8e8'], filter: ['효과', '#f06aa8'], transform: ['변형', '#f0b03f'], compose: ['합성', '#a07cf5'], color: ['색', '#6fdc72'], anim: ['애니메이션', '#ff8a5c'], fx: ['컬렉션', '#ffd84a'], io: ['입출력', '#ffffff'] };
+defNodes({
+  output: { en: 'Output', cat: 'io', label: '출력', ins: ['입력'], params: [Chk('grid', '시트 열 수 지정', false), { ...N('cols', '시트 열 수', 1, 64, 1, 16), if: 'grid' }],
+    run(c, p, t, [im]) { c.drawImage(im, 0, 0); } },
+});
+
+
+// ---------- graph state & evaluation ----------
+let nodes = [], nextId = 1, selId = null, selSet = new Set(), cache = new Map(), needs = true;
+const byId = id => nodes.find(n => n.id === id);
+const outNode = () => nodes.find(n => n.type === 'output');
+const touch = () => { cache.clear(); needs = true; $('batch').hidden = !nodes.some(n => n.p.imgs?.length > 1); };
+
+function mkCanvas() {
+  const c = document.createElement('canvas'); c.width = S.W; c.height = S.H;
+  c.getContext('2d', { willReadFrequently: true }).imageSmoothingEnabled = false;
+  return c;
+}
+// value of each animated param at frame f (linear between keys, clamped outside)
+function resolveParams(n, f) {
+  const p = { ...n.p };
+  for (const k in n.k) {
+    const a = n.k[k];
+    if (!a.length) continue;
+    if (f <= a[0][0]) p[k] = a[0][1];
+    else if (f >= a[a.length - 1][0]) p[k] = a[a.length - 1][1];
+    else { const j = a.findIndex(q => q[0] > f); p[k] = lerp(a[j - 1][1], a[j][1], (f - a[j - 1][0]) / (a[j][0] - a[j - 1][0])); }
+  }
+  return p;
+}
+function evaluate(n, f) {
+  const key = n.id + ':' + f;
+  let c = cache.get(key);
+  if (c) return c;
+  const ins = n.in.map(id => (byId(id) ? evaluate(byId(id), f) : mkCanvas())); // missing input = transparent
+  c = mkCanvas();
+  DEFS[n.type].run(c.getContext('2d'), resolveParams(n, f), tOf(f), ins, n, f);
+  cache.set(key, c);
+  return c;
+}
+const defaults = D => Object.fromEntries(D.params.map(q => [q.k, q.def]));
+function add(type, x, y, p = {}, ins = []) {
+  const D = DEFS[type];
+  const n = { id: nextId++, type, x, y, p: { ...defaults(D), ...p }, k: {}, in: D.ins.map((_, i) => ins[i] ?? null) };
+  nodes.push(n);
+  return n.id;
+}
+const reaches = (a, b) => a === b || (byId(a)?.in || []).some(i => i != null && reaches(i, b)); // does a depend on b
+function connect(from, to, idx) {
+  if (from === to || reaches(from, to)) return; // no cycles
+  byId(to).in[idx] = from;
+  drawLinks(); touch();
+}
+
+// ---------- presets ----------
+const setS = (loop, frames, fps = 12) => Object.assign(S, { loop, frames, fps });
+const PRESETS = {
+  fire() {
+    setS(true, 16);
+    const pt = add('particles', 20, 20, { count: 80, seed: 3, ex: 0.5, ey: 0.9, dir: 90, spread: 50, speed: 45, grav: -20, life: 0.7, s0: 12, s1: 3, c0: '#ffffff', c1: '#777777', shape: 'circle' });
+    const nz = add('noise', 20, 190, { scale: 3, sx: 0, sy: 1, oct: 3, contrast: 1.8, seed: 5 });
+    const mk = add('mask', 200, 80, {}, [pt, nz]);
+    const rp = add('ramp', 360, 80, { steps: 4 }, [mk]);
+    const gl = add('glow', 520, 80, { radius: 2, strength: 1 }, [rp]);
+    add('output', 680, 80, { cols: S.frames }, [gl]);
+  },
+  hit() {
+    setS(false, 12);
+    const ring = add('shape', 20, 20, { type: 'ring', s0: 2, s1: 28, th: 3, color: '#ffe9a0', fade: true });
+    const sp = add('particles', 20, 190, { count: 24, spread: 360, dir: 0, speed: 40, grav: 0, life: 0.5, s0: 3, s1: 1, c0: '#fff2a0', c1: '#ff8030' });
+    const bl = add('blend', 200, 80, { mode: 'lighter' }, [ring, sp]);
+    const gl = add('glow', 360, 80, { radius: 2, strength: 1 }, [bl]);
+    byId(gl).k = { strength: [[0, 2.5], [11, 0.3]] }; // demo keyframes: glow fades out
+    add('output', 520, 80, { cols: S.frames }, [gl]);
+  },
+  slash() {
+    setS(false, 12);
+    const ar = add('arc', 20, 20, { cx: 0.5, cy: 0.55, radius: 24, thick: 12, start: 140, sweep: 150, head: '#ffffff', tail: '#ff8a1f' });
+    const ec = add('echo', 180, 20, { count: 3, decay: 0.55 }, [ar]);
+    const ol = add('outline', 340, 20, { color: '#3a0a0a', outside: true }, [ec]);
+    const qz = add('quantize', 500, 20, { count: 5, threshold: 110, dither: true }, [ol]);
+    add('output', 660, 20, { cols: S.frames }, [qz]);
+  },
+  heal() {
+    setS(true, 16);
+    const pt = add('particles', 20, 20, { count: 24, ex: 0.5, ey: 0.9, dir: 90, spread: 60, speed: 30, grav: 0, life: 0.8, s0: 3, s1: 1, c0: '#ccffcc', c1: '#33ff77' });
+    const st = add('shape', 20, 190, { type: 'star', s0: 13, s1: 13, rot: 72, color: '#99ffbb', fade: false });
+    const bl = add('blend', 200, 80, { mode: 'lighter' }, [pt, st]);
+    add('output', 360, 80, { cols: S.frames }, [bl]);
+  },
+};
+function loadPreset(name) {
+  nodes = []; nextId = 1; PRESETS[name]();
+  frame = 0; syncUI(); buildGraph(); select(outNode().id); touch();
+}
+function syncUI() {
+  $('size').value = S.W; $('frames').value = S.frames; $('fps').value = S.fps; $('bg').value = S.bg; $('loop').checked = S.loop;
+}
+
+// ---------- graph UI ----------
+const graph = $('graph'), world = $('world'), pan = { x: 0, y: 0 };
+let drag = null;
+const applyPan = () => (world.style.transform = `translate(${pan.x}px,${pan.y}px)`);
+const toWorld = e => { const r = graph.getBoundingClientRect(); return { x: e.clientX - r.left - pan.x, y: e.clientY - r.top - pan.y }; };
+const dotPos = (n, el) => ({ x: n.x + el.offsetLeft + 6, y: n.y + el.offsetTop + 6 });
+const bez = (a, b) => `M${a.x},${a.y} C${a.x + 60},${a.y} ${b.x - 60},${b.y} ${b.x},${b.y}`;
+
+function buildGraph() {
+  world.querySelectorAll('.node').forEach(e => e.remove());
+  for (const n of nodes) {
+    const D = DEFS[n.type], el = document.createElement('div');
+    el.className = 'node'; el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+    el.innerHTML = `<div class="t"><span class="en">${D.en}</span> ${D.label}</div><canvas></canvas>`;
+    el.querySelector('.t').style.borderTopColor = CATS[D.cat][1];
+    n.el = el; n.cv = el.querySelector('canvas'); n.din = [];
+    const sz = n.type === 'output' ? 96 : 64;
+    n.cv.style.width = n.cv.style.height = sz + 'px';
+    D.ins.forEach((name, i) => {
+      const top = 34 + i * 24, dot = document.createElement('div');
+      dot.className = 'dot in'; dot.style.top = top + 'px'; dot.dataset.node = n.id; dot.dataset.in = i; dot.title = name;
+      dot.oncontextmenu = e => { e.preventDefault(); n.in[i] = null; drawLinks(); touch(); };
+      dot.onclick = e => { if (e.altKey) { n.in[i] = null; drawLinks(); touch(); } };
+      dot.onmousedown = e => {
+        if (n.in[i] == null) return;
+        e.stopPropagation(); drag = { k: 'link', from: n.in[i] };
+        n.in[i] = null; drawLinks(); touch();
+      };
+      el.append(dot); n.din.push(dot);
+      el.insertAdjacentHTML('beforeend', `<span class="pl" style="top:${top}px">${name}</span>`);
+    });
+    if (n.type !== 'output') {
+      const o = document.createElement('div');
+      o.className = 'dot out';
+      o.onmousedown = e => { e.stopPropagation(); drag = { k: 'link', from: n.id }; };
+      el.append(o); n.dout = o;
+    }
+    el.onmousedown = e => {
+      if (e.shiftKey) return select(n.id, true);
+      const keep = selSet.has(n.id) && selSet.size > 1; // keep group so it can be dragged together
+      if (!keep) select(n.id); else { selId = n.id; showParams(); }
+      if (e.target.closest('.t')) drag = { k: 'node', id: n.id, keep, moved: false, sx: e.clientX, sy: e.clientY, pos: [...selSet].map(id => [byId(id), byId(id).x, byId(id).y]) };
+    };
+    world.append(el);
+  }
+  sizeCanvases(); drawLinks();
+}
+function drawLinks() {
+  let s = '';
+  for (const n of nodes) n.in.forEach((src, i) => {
+    const a = byId(src);
+    if (a?.dout) s += `<path data-to="${n.id}" data-i="${i}" d="${bez(dotPos(a, a.dout), dotPos(n, n.din[i]))}"/>`;
+  });
+  $('links').innerHTML = s;
+}
+$('links').onclick = e => {
+  if (e.target.dataset.to) { byId(+e.target.dataset.to).in[+e.target.dataset.i] = null; drawLinks(); touch(); }
+};
+graph.onmousedown = e => {
+  if (e.target === graph) drag = { k: 'pan', moved: false, sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
+};
+addEventListener('mousemove', e => {
+  if (!drag) return;
+  drag.moved = true;
+  if (drag.k === 'pan') { pan.x = drag.px + e.clientX - drag.sx; pan.y = drag.py + e.clientY - drag.sy; applyPan(); }
+  else if (drag.k === 'node') {
+    for (const [n, x, y] of drag.pos) {
+      n.x = x + e.clientX - drag.sx; n.y = y + e.clientY - drag.sy;
+      n.el.style.left = n.x + 'px'; n.el.style.top = n.y + 'px';
+    }
+    drawLinks();
+  } else { const f = byId(drag.from); $('tmp').setAttribute('d', bez(dotPos(f, f.dout), toWorld(e))); }
+});
+addEventListener('mouseup', e => {
+  if (drag?.k === 'link') {
+    const t = document.elementFromPoint(e.clientX, e.clientY);
+    if (t?.dataset.in !== undefined) connect(drag.from, +t.dataset.node, +t.dataset.in);
+    $('tmp').setAttribute('d', '');
+  } else if (drag?.k === 'pan' && !drag.moved) clearSel();
+  else if (drag?.k === 'node' && drag.keep && !drag.moved) select(drag.id);
+  drag = null;
+});
+addEventListener('keydown', e => {
+  if (!['Delete', 'Backspace'].includes(e.key) || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  const del = new Set([...selSet].filter(id => byId(id)?.type !== 'output'));
+  if (!del.size) return;
+  nodes = nodes.filter(x => !del.has(x.id));
+  nodes.forEach(x => x.in = x.in.map(i => (del.has(i) ? null : i)));
+  selId = null; selSet.clear(); buildGraph(); showParams(); touch();
+});
+
+function autoLayout() {
+  const depth = new Map(), d = n => { if (!depth.has(n.id)) depth.set(n.id, 1 + Math.max(-1, ...n.in.filter(i => byId(i)).map(i => d(byId(i))))); return depth.get(n.id); };
+  const cols = [];
+  for (const n of nodes) (cols[d(n)] ||= []).push(n);
+  cols.forEach((col, x) => col.forEach((n, y) => {
+    n.x = 30 + x * 190; n.y = 30 + y * 150; n.el.style.left = n.x + 'px'; n.el.style.top = n.y + 'px';
+  }));
+  drawLinks(); fitView();
+}
+function fitView() {
+  const x0 = Math.min(...nodes.map(n => n.x)), x1 = Math.max(...nodes.map(n => n.x + 140));
+  const y0 = Math.min(...nodes.map(n => n.y)), y1 = Math.max(...nodes.map(n => n.y + 140));
+  pan.x = (graph.clientWidth - x0 - x1) / 2; pan.y = (graph.clientHeight - y0 - y1) / 2; applyPan();
+}
+$('layout').onclick = autoLayout;
+$('fit').onclick = fitView;
+
+function select(id, toggle) {
+  if (!toggle) selSet = new Set([id]);
+  else if (id == null) selSet.clear();
+  else if (selSet.delete(id)) id = [...selSet].pop() ?? null;
+  else selSet.add(id);
+  selId = id; needs = true;
+  nodes.forEach(n => n.el.classList.toggle('sel', selSet.has(n.id)));
+  showParams();
+}
+function clearSel() { selSet = new Set(); select(null, true); }
+function showParams() {
+  const box = $('params'), n = byId(selId);
+  box.innerHTML = '';
+  if (!n) return;
+  box.insertAdjacentHTML('beforeend', `<h3>${DEFS[n.type].en} ${DEFS[n.type].label}</h3>`);
+  const rp = resolveParams(n, frame);
+  for (const q of DEFS[n.type].params) {
+    if (q.if && !n.p[q.if]) continue; // shown only while its toggle param is on
+    const row = document.createElement('label'), out = document.createElement('output');
+    row.className = 'row'; row.append((n.k[q.k]?.length ? '◆ ' : '') + q.l);
+    let inp;
+    if (q.t === 'i') {
+      inp = document.createElement('button'); inp.textContent = 'PNG 불러오기'; out.textContent = n.p[q.k].length + '장';
+      inp.onclick = e => {
+        e.preventDefault();
+        const fi = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/png,image/gif', multiple: true });
+        fi.onchange = async () => {
+          if (!fi.files.length) return;
+          const urls = await Promise.all([...fi.files].map(readURL));
+          await Promise.all(urls.map(decode));
+          n.p[q.k] = urls; showParams(); touch();
+        };
+        fi.click();
+      };
+    } else {
+      if (q.t === 's') {
+        inp = document.createElement('select');
+        inp.innerHTML = q.opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+        inp.value = n.p[q.k];
+      } else {
+        inp = document.createElement('input');
+        inp.type = { n: 'range', c: 'color', b: 'checkbox', t: 'text' }[q.t];
+        if (q.t === 'n') Object.assign(inp, { min: q.min, max: n.type === 'image' && q.k === 'index' ? Math.max(0, n.p.imgs.length - 1) : q.max, step: q.step, value: rp[q.k] });
+        else if (q.t === 'c' || q.t === 't') inp.value = n.p[q.k];
+        else inp.checked = n.p[q.k];
+      }
+      if (q.t === 'n') { out.textContent = rp[q.k]; inp.dataset.k = q.k; }
+      inp.oninput = () => {
+        const v = q.t === 'n' ? +inp.value : q.t === 'b' ? inp.checked : inp.value;
+        if (q.t === 'n' && n.k[q.k]?.length) setKey(n, q.k, frame, v); else n.p[q.k] = v;
+        if (q.t === 'n') out.textContent = inp.value;
+        if (q.t === 'b') { showParams(); drawTL(); }
+        touch();
+      };
+    }
+    row.append(inp, out); box.append(row);
+  }
+}
+// keep animated sliders in sync with the current frame
+function syncSliders() {
+  const n = byId(selId);
+  if (!n) return;
+  const p = resolveParams(n, frame);
+  $('params').querySelectorAll('input[data-k]').forEach(i => {
+    if (n.k[i.dataset.k]?.length) { i.value = p[i.dataset.k]; i.nextSibling.textContent = i.value; }
+  });
+}
+
+// ---------- keyframes & timeline ----------
+function setKey(n, k, f, v) {
+  n.k[k] = [...(n.k[k] || []).filter(x => x[0] !== f), [f, v]].sort((x, y) => x[0] - y[0]);
+  touch();
+}
+function delKey(n, k, f) {
+  n.k[k] = n.k[k].filter(x => x[0] !== f);
+  if (!n.k[k].length) delete n.k[k];
+  touch();
+}
+function drawTL() {
+  const n = byId(selId), N_ = S.frames, step = Math.ceil(N_ / 16), x = f => ((f + 0.5) / N_ * 100) + '%';
+  const ph = `<i style="left:${frame / N_ * 100}%;width:${100 / N_}%"></i>`;
+  let h = `<div class="tr"><span></span><span></span><div class="trk" id="ruler">${Array.from({ length: N_ }, (_, f) => f % step ? '' : `<b style="left:${x(f)}">${f}</b>`).join('')}${ph}</div></div>`;
+  for (const q of n ? DEFS[n.type].params.filter(q => q.t === 'n' && !(q.if && !n.p[q.if])) : []) {
+    const a = n.k[q.k] || [];
+    h += `<div class="tr"><span>${q.l}</span><button data-k="${q.k}">${a.some(v => v[0] === frame) ? '◆' : '◇'}</button><div class="trk">${a.map(([f]) => `<u data-k="${q.k}" data-f="${f}" style="left:${x(f)}">◆</u>`).join('')}${ph}</div></div>`;
+  }
+  $('tl').innerHTML = h;
+}
+let tld = false;
+const tlFrame = e => {
+  const r = $('ruler').getBoundingClientRect();
+  setPlaying(false); setFrame(Math.floor(clamp((e.clientX - r.left) / r.width, 0, 0.9999) * S.frames));
+};
+$('tl').oncontextmenu = e => e.preventDefault();
+$('tl').onmousedown = e => {
+  const n = byId(selId), d = e.target.dataset;
+  if (e.target.closest('#ruler')) { tld = true; tlFrame(e); }
+  else if (d.f !== undefined) { if (e.button === 2 || e.altKey) delKey(n, d.k, +d.f); else { setPlaying(false); setFrame(+d.f); } }
+  else if (d.k && n) { if (n.k[d.k]?.some(v => v[0] === frame)) delKey(n, d.k, frame); else setKey(n, d.k, frame, resolveParams(n, frame)[d.k]); showParams(); }
+};
+addEventListener('mousemove', e => { if (tld) tlFrame(e); });
+addEventListener('mouseup', () => (tld = false));
+
+// ---------- settings, rendering ----------
+let frame = 0, playing = true, acc = 0, lastTs = 0;
+function setFrame(f) { frame = ((f % S.frames) + S.frames) % S.frames; needs = true; }
+function setPlaying(v) { playing = v; $('play').textContent = v ? '❚❚' : '▶'; }
+const big = $('big');
+function sizeCanvases() {
+  big.width = big.height = S.W;
+  big.style.width = big.style.height = Math.max(1, Math.floor(300 / S.W)) * S.W + 'px';
+  nodes.forEach(n => { n.cv.width = n.cv.height = S.W; });
+  document.body.classList.toggle('checker', S.bg === 'checker');
+  touch();
+}
+function render() {
+  for (const n of nodes) {
+    const c = n.cv.getContext('2d');
+    c.clearRect(0, 0, S.W, S.H); c.drawImage(evaluate(n, frame), 0, 0);
+  }
+  const b = big.getContext('2d');
+  b.clearRect(0, 0, S.W, S.H); b.drawImage(evaluate(outNode(), frame), 0, 0);
+  $('scrub').max = S.frames - 1; $('scrub').value = frame; $('finfo').textContent = `${frame + 1} / ${S.frames}`;
+  drawTL(); syncSliders();
+}
+function tick(ts) {
+  if (playing) {
+    acc += (ts - lastTs) / 1000 * S.fps;
+    if (acc >= 1) { setFrame(frame + Math.floor(acc)); acc %= 1; }
+  }
+  lastTs = ts;
+  if (needs) { needs = false; render(); }
+  requestAnimationFrame(tick);
+}
+
+$('size').innerHTML = [32, 48, 64, 96, 128].map(v => `<option value="${v}">${v}×${v}</option>`).join('');
+$('size').value = S.W;
+$('size').onchange = e => { S.W = S.H = +e.target.value; sizeCanvases(); };
+$('frames').onchange = e => {
+  const old = S.frames, o = outNode();
+  S.frames = clamp(Math.round(+e.target.value) || 1, 1, 64); e.target.value = S.frames;
+  if (o.p.cols === old) o.p.cols = S.frames;
+  frame = 0; showParams(); touch();
+};
+$('fps').onchange = e => { S.fps = clamp(Math.round(+e.target.value) || 1, 1, 60); e.target.value = S.fps; };
+$('bg').onchange = e => { S.bg = e.target.value; sizeCanvases(); };
+$('play').onclick = () => setPlaying(!playing);
+$('prev').onclick = () => { setPlaying(false); setFrame(frame - 1); };
+$('next').onclick = () => { setPlaying(false); setFrame(frame + 1); };
+$('scrub').oninput = e => { setPlaying(false); setFrame(+e.target.value); };
+$('loop').onchange = e => { S.loop = e.target.checked; frame = 0; touch(); };
+let tab = 'all';
+try { tab = localStorage.getItem('palTab') || 'all'; } catch (e) {}
+function renderPal() {
+  const q = $('q').value.trim().toLowerCase(), all = Object.entries(DEFS).filter(([k]) => k !== 'output');
+  if (tab !== 'all' && !CATS[tab]) tab = 'all';
+  const cnt = c => all.filter(([, D]) => D.cat === c).length;
+  $('tabs').innerHTML = [['all', ['전체', '#888'], all.length], ...Object.entries(CATS).map(([c, v]) => [c, v, cnt(c)])].map(([c, [l, col], n]) =>
+    `<button data-c="${c}" class="${c === tab ? 'on' : ''}"><i style="background:${col}"></i>${l} ${n}</button>`).join('');
+  const hit = ([, D]) => (D.en + D.label).toLowerCase().includes(q);
+  const useTab = tab !== 'all' && (!q || all.some(x => x[1].cat === tab && hit(x)));
+  $('pl').innerHTML = Object.entries(CATS).filter(([c]) => !useTab || c === tab).map(([c, [l, col]]) => {
+    const items = all.filter(x => x[1].cat === c && hit(x));
+    return items.length ? `<h4><i style="background:${col}"></i>${l}</h4>` + items.map(([k, D]) =>
+      `<div class="pi" draggable="true" data-t="${k}"><b style="color:${col}">${D.en}</b><small>${D.label}</small></div>`).join('') : '';
+  }).join('');
+}
+$('tabs').onclick = e => {
+  const c = e.target.closest('button')?.dataset.c;
+  if (!c) return;
+  tab = c; try { localStorage.setItem('palTab', c); } catch (e) {}
+  renderPal();
+};
+function addAt(type, x, y) { const id = add(type, x, y); buildGraph(); select(id); }
+$('q').oninput = renderPal;
+$('pl').onclick = e => {
+  const t = e.target.closest('.pi')?.dataset.t;
+  if (t) { const j = (nodes.length % 5) * 14; addAt(t, graph.clientWidth / 2 - pan.x - 70 + j, graph.clientHeight / 2 - pan.y - 60 + j); }
+};
+$('pl').ondragstart = e => e.dataTransfer.setData('text/plain', e.target.closest('.pi').dataset.t);
+graph.ondragover = e => e.preventDefault();
+graph.ondrop = e => { const t = e.dataTransfer.getData('text/plain'), w = toWorld(e); if (DEFS[t]) addAt(t, w.x - 70, w.y - 20); };
+$('preset').onchange = e => { if (e.target.value) loadPreset(e.target.value); e.target.value = ''; };
+
+// ---------- export / JSON ----------
+function save(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const sheetCols = () => (outNode().p.grid ? Math.min(outNode().p.cols, S.frames) : S.frames);
+function sheetCanvas(sc = 1) {
+  const o = outNode(), cols = sheetCols(), rows = Math.ceil(S.frames / cols), w = S.W * sc, h = S.H * sc;
+  const c = document.createElement('canvas'); c.width = cols * w; c.height = rows * h;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  for (let f = 0; f < S.frames; f++) ctx.drawImage(evaluate(o, f), (f % cols) * w, Math.floor(f / cols) * h, w, h);
+  return c;
+}
+$('exp').onclick = () => { const sc = +$('scaleSel').value; sheetCanvas(sc).toBlob(b => save(b, `vfx_sheet_${S.W}x${S.H}_${S.frames}f_x${sc}.png`)); };
+$('batch').onclick = async () => { // one sheet per image index, applied to all Image nodes
+  const im = nodes.filter(n => n.type === 'image'), cnt = Math.max(...im.map(n => n.p.imgs.length)), old = im.map(n => n.p.index), sc = +$('scaleSel').value;
+  for (let i = 0; i < cnt; i++) {
+    im.forEach(n => (n.p.index = i)); touch();
+    const b = await new Promise(r => sheetCanvas(sc).toBlob(r));
+    save(b, `vfx_sheet_${S.W}x${S.H}_${S.frames}f_x${sc}_img${i}.png`);
+    await new Promise(r => setTimeout(r, 300));
+  }
+  im.forEach((n, j) => (n.p.index = old[j])); touch(); showParams();
+};
+$('save').onclick = () => save(new Blob([JSON.stringify({ S, nodes: nodes.map(({ id, type, x, y, p, k, in: i }) => ({ id, type, x, y, p, k, in: i })) })], { type: 'application/json' }), 'dotvfx_graph.json');
+$('load').onclick = () => $('file').click();
+$('file').onchange = e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = async () => {
+    try {
+      const o = JSON.parse(r.result);
+      const list = o.nodes.filter(n => DEFS[n.type]);
+      await Promise.all(list.flatMap(n => n.p?.imgs || []).map(decode));
+      if (list.filter(n => n.type === 'output').length !== 1) throw new Error('출력 노드는 정확히 1개여야 합니다');
+      if (![32, 48, 64, 96, 128].includes(o.S.W)) throw new Error('지원하지 않는 캔버스 크기');
+      Object.assign(S, { W: o.S.W, H: o.S.W, frames: clamp(o.S.frames, 1, 64), fps: clamp(o.S.fps, 1, 60), bg: o.S.bg, loop: o.S.loop !== false });
+      const ids = new Set(list.map(n => n.id));
+      nodes = list.map(n => ({ id: n.id, type: n.type, x: n.x, y: n.y, p: { ...defaults(DEFS[n.type]), ...n.p }, k: n.k || {},
+        in: DEFS[n.type].ins.map((_, i) => (ids.has(n.in?.[i]) ? n.in[i] : null)) }));
+      nextId = Math.max(...ids) + 1; frame = 0;
+      syncUI(); buildGraph(); select(outNode().id);
+    } catch (err) { alert('불러오기 실패: ' + err.message); }
+  };
+  r.readAsText(f);
+};
+
+// ---------- self check ----------
+function selfCheck() {
+  const o = outNode(), px = f => evaluate(o, f).getContext('2d').getImageData(0, 0, S.W, S.H).data;
+  let ok = true;
+  const check = (v, msg) => { console.assert(v, msg); ok = ok && v; };
+  if (S.loop) { const a = px(0), b = px(S.frames); check(a.every((v, i) => v === b[i]), 'loop mismatch: frame 0 != frame N'); }
+  else { try { px(0); } catch (e) { check(false, 'frame 0 render failed: ' + e); } }
+  const cols = sheetCols(), rows = Math.ceil(S.frames / cols), sh = sheetCanvas(1), sh2 = sheetCanvas(2);
+  check(sh.width === cols * S.W && sh.height === rows * S.H, 'sheet size mismatch');
+  check(sh2.width === 2 * sh.width && sh2.height === 2 * sh.height, 'scaled sheet size mismatch');
+  const kn = { k: { x: [[0, 0], [10, 10]] }, p: { x: 99 } };
+  check(resolveParams(kn, 5).x === 5 && resolveParams(kn, 20).x === 10, 'resolveParams interpolation');
+  const keep = [nodes, nextId]; // every node type must evaluate at frame 0 with defaults and no inputs
+  for (const type in DEFS) {
+    try { nodes = []; evaluate(byId(add(type, 0, 0)), 0); } catch (e) { check(false, type + ' failed: ' + e); }
+  }
+  [nodes, nextId] = keep;
+  if (ok) console.log('selfCheck ok');
+  touch();
+}
+
+</script>
+<script src="nodes/generate.js"></script>
+<script src="nodes/filter.js"></script>
+<script src="nodes/transform.js"></script>
+<script src="nodes/compose.js"></script>
+<script src="nodes/color.js"></script>
+<script src="nodes/io.js"></script>
+<script src="nodes/batch_a.js"></script>
+<script src="nodes/batch_b.js"></script>
+<script src="nodes/batch_c.js"></script>
+<script src="nodes/batch_d.js"></script>
+<script src="nodes/batch_e.js"></script>
+<script src="nodes/fx_a.js"></script>
+<script src="nodes/fx_b.js"></script>
+<script src="nodes/fx_c.js"></script>
+<script src="nodes/fx_d.js"></script>
+<script>
+// panel sizes + timeline on/off, remembered per viewer
+const ui = (() => { try { return JSON.parse(localStorage.getItem('ui')) || {}; } catch (e) { return {}; } })();
+const saveUI = () => { try { localStorage.setItem('ui', JSON.stringify(ui)); } catch (e) {} };
+function applyUI() {
+  if (ui.pal) $('pal').style.width = ui.pal + 'px';
+  if (ui.tl) $('tl').style.height = ui.tl + 'px';
+  $('tl').hidden = $('tlSplit').hidden = !!ui.tlOff;
+  $('tlBtn').classList.toggle('on', !ui.tlOff);
+}
+document.querySelectorAll('.split').forEach(s => s.onmousedown = e => {
+  e.preventDefault();
+  const k = s.dataset.t, r = $(k).getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY;
+  const mv = ev => {
+    ui[k] = k === 'pal' ? clamp(r.width + ev.clientX - x0, 120, 480) : clamp(r.height - (ev.clientY - y0), 60, innerHeight * 0.6);
+    applyUI();
+  };
+  const up = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', up); saveUI(); };
+  addEventListener('mousemove', mv); addEventListener('mouseup', up);
+});
+$('tlBtn').onclick = () => { ui.tlOff = !ui.tlOff; saveUI(); applyUI(); };
+applyUI();
+renderPal();
+loadPreset('fire');
+selfCheck();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
