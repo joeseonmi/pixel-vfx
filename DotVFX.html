@@ -73,7 +73,7 @@ h3{margin:12px 0 4px}
   <div id="pal"><input id="q" placeholder="검색 (영문/한글)"><div class="tabs" id="tabs"></div><div id="pl"></div></div>
   <div class="split v" data-t="pal" title="드래그해서 폭 조절"></div>
   <div id="graph"><div id="world"><svg id="svg"><g id="links"></g><path id="tmp"></path></svg></div>
-    <div id="gbtns"><button id="layout">자동 정렬</button><button id="fit">화면 맞춤</button></div></div>
+    <div id="gbtns"><button id="cpy" title="선택한 노드 복사 (Ctrl/⌘+C)">복사</button><button id="pst" title="붙여넣기 (Ctrl/⌘+V)">붙여넣기</button><button id="dup" title="복제 (Ctrl/⌘+D)">복제</button><button id="layout">자동 정렬</button><button id="fit">화면 맞춤</button></div></div>
   <div id="side">
     <canvas id="big" class="pv"></canvas>
     <div id="tp"><button id="prev">◀</button><button id="play">❚❚</button><button id="next">▶</button>
@@ -367,13 +367,56 @@ addEventListener('pointerup', e => {
   else if (drag?.k === 'node' && drag.keep && !drag.moved) select(drag.id);
   drag = null;
 });
-addEventListener('keydown', e => {
-  if (!['Delete', 'Backspace'].includes(e.key) || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+function delSel() {
   const del = new Set([...selSet].filter(id => byId(id)?.type !== 'output'));
   if (!del.size) return;
   nodes = nodes.filter(x => !del.has(x.id));
   nodes.forEach(x => x.in = x.in.map(i => (del.has(i) ? null : i)));
   selId = null; selSet.clear(); buildGraph(); showParams(); touch();
+}
+// ---------- copy / paste ----------
+// clip keeps deep copies; links inside the copied group are remapped, links from outside stay connected
+// (held as node objects, so they drop out after a preset/JSON load replaces the graph).
+let clip = null, pasteN = 0, lastPt = null, prevPaste = null;
+graph.addEventListener('pointermove', e => { lastPt = e.target.closest('#gbtns') ? null : toWorld(e); });
+graph.addEventListener('pointerleave', () => { lastPt = null; });
+function copySel() {
+  const ids = new Set([...selSet].filter(id => byId(id) && byId(id).type !== 'output'));
+  if (!ids.size) return false;
+  clip = nodes.filter(n => ids.has(n.id)).map(n => ({ id: n.id, type: n.type, x: n.x, y: n.y,
+    p: structuredClone(n.p), k: structuredClone(n.k), in: n.in.map(i => (ids.has(i) ? i : byId(i) || null)) }));
+  pasteN = 0; prevPaste = null; return true;
+}
+function pasteClip(atMouse) {
+  if (!clip?.length) return;
+  const x0 = Math.min(...clip.map(n => n.x)), y0 = Math.min(...clip.map(n => n.y));
+  let dx, dy;
+  if (atMouse && lastPt) {
+    const same = prevPaste && prevPaste.x === lastPt.x && prevPaste.y === lastPt.y;
+    pasteN = same ? pasteN + 1 : 0; prevPaste = { ...lastPt };
+    dx = lastPt.x - 20 - x0 + pasteN * 24; dy = lastPt.y - 12 - y0 + pasteN * 24;
+  } else { pasteN++; dx = dy = pasteN * 30; }
+  const map = new Map(clip.map(c => [c.id, nextId++]));
+  for (const c of clip) nodes.push({ id: map.get(c.id), type: c.type, x: Math.round(c.x + dx), y: Math.round(c.y + dy),
+    p: structuredClone(c.p), k: structuredClone(c.k),
+    in: c.in.map(i => (i == null ? null : typeof i === 'object' ? (nodes.includes(i) ? i.id : null) : map.get(i))) });
+  buildGraph();
+  selSet = new Set(map.values()); selId = [...selSet].pop(); needs = true;
+  nodes.forEach(n => n.el.classList.toggle('sel', selSet.has(n.id)));
+  showParams(); touch();
+}
+$('cpy').onclick = copySel;
+$('pst').onclick = () => pasteClip(false);
+$('dup').onclick = () => { if (copySel()) pasteClip(false); };
+addEventListener('keydown', e => {
+  if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (['Delete', 'Backspace'].includes(e.key)) return delSel();
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'c') { if (!getSelection().toString()) copySel(); }
+  else if (k === 'x') { if (copySel()) { e.preventDefault(); delSel(); } }
+  else if (k === 'v') { if (clip) { e.preventDefault(); pasteClip(true); } }
+  else if (k === 'd') { e.preventDefault(); if (copySel()) pasteClip(true); }
 });
 
 function autoLayout() {
