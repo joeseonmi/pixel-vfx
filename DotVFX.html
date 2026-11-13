@@ -51,7 +51,8 @@ button:hover{background:#44445e}
 h3{margin:12px 0 4px}
 #pal{width:170px;padding:6px;overflow:auto;background:#131627;border-right:1px solid #000}
 #q{width:100%;margin-bottom:4px}
-#graph,#tl,.split{touch-action:none} /* finger drags pan/wire/scrub instead of scrolling the page */
+#graph,#tl,.split{touch-action:none}
+#graph{user-select:none;-webkit-user-select:none} /* finger drags pan/wire/scrub instead of scrolling the page */
 .split{flex:none;background:#000}.split:hover{background:#3fd8e8}
 .split.v{width:5px;cursor:col-resize}.split.h{height:5px;cursor:row-resize}
 #tlBtn.on{background:#3fd8e8;color:#000}
@@ -455,12 +456,18 @@ function pasteClip(atMouse) {
 $('cpy').onclick = copySel;
 $('pst').onclick = () => pasteClip(false);
 $('dup').onclick = () => { if (copySel()) pasteClip(false); };
+// only real text boxes keep the keys for themselves; sliders, checkboxes, colour pickers and menus don't block shortcuts
+const isTyping = (el = document.activeElement) => el?.tagName === 'TEXTAREA' || el?.isContentEditable
+  || (el?.tagName === 'INPUT' && /^(text|number|search|email|url|password)$/.test(el.type));
+addEventListener('pointerdown', e => { // clicking the graph takes focus away from the side panel
+  if (e.target.closest?.('#graph') && document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+}, true);
 addEventListener('keydown', e => {
-  if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
-  if (['Delete', 'Backspace'].includes(e.key)) return delSel();
+  if (isTyping() || e.defaultPrevented) return;
+  if (['Delete', 'Backspace'].includes(e.key)) { if (document.activeElement?.tagName !== 'SELECT') delSel(); return; }
   if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
   const k = e.key.toLowerCase();
-  if (k === 'c') { if (!getSelection().toString()) copySel(); }
+  if (k === 'c') copySel();
   else if (k === 'x') { if (copySel()) { e.preventDefault(); delSel(); } }
   else if (k === 'v') { if (clip) { e.preventDefault(); pasteClip(true); } }
   else if (k === 'd') { e.preventDefault(); if (copySel()) pasteClip(true); }
