@@ -33,6 +33,10 @@ const SHAPE_LIB = (() => {
       case 'blade': { const w = Math.max(0.06, inner * 0.6), R = (w + 1 / w) / 2, o = (1 / w - w) / 2;
         return (u, v) => (u - o) ** 2 + v * v <= R * R && (u + o) ** 2 + v * v <= R * R; }
       case 'crescent': { const dd = 0.25 + 0.6 * (1 - inner); return (u, v) => u * u + v * v <= 1 && u * u + (v + dd) ** 2 > 1; }
+      case 'sword': { // tip up: long blade, wide crossguard, grip, round pommel; 안쪽 비율 = blade width
+        const w = 0.07 + 0.22 * inner, blade = [[0, -1], [w, -0.66], [w * 0.92, 0.34], [-w * 0.92, 0.34], [-w, -0.66]], g = Math.max(0.035, w * 0.32), pr = 0.06 + w * 0.4;
+        return Object.assign((u, v) => inPoly(blade, u, v) || (Math.abs(u) <= w + 0.26 && v > 0.32 && v <= 0.43)
+          || (Math.abs(u) <= g && v > 0.43 && v <= 0.82) || u * u + (v - 0.86) ** 2 <= pr * pr, { c: [0, -0.25] }); }
       case 'drop': { const m = 1 + 2 * inner; return Object.assign(poly(curve(64, a => [Math.sin(a) * Math.abs(Math.sin(a / 2)) ** m, -Math.cos(a)])), { c: [0, 0.4] }); }
       case 'heart': return poly(curve(72, a => [Math.sin(a) ** 3, -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) / 17 - 0.15]));
       default: return null;
@@ -70,7 +74,7 @@ defNodes({
       ['tri', '삼각형'], ['square', '네모'], ['diamond', '마름모'], ['poly', '다각형'],
       ['spike', '뾰족별'], ['burst', '가시 폭발'], ['sparkle', '반짝이'], ['saw', '톱니 링'],
       ['shard', '파편(shard)'], ['crystal', '수정(육각)'], ['arrow', '화살촉'], ['blade', '칼날(렌즈)'], ['crescent', '초승달'],
-      ['drop', '물방울'], ['heart', '하트']], 'ring'),
+      ['sword', '큰 칼'], ['drop', '물방울'], ['heart', '하트']], 'ring'),
     N('cx', '중심 X', 0, 1, 0.01, 0.5), N('cy', '중심 Y', 0, 1, 0.01, 0.5),
     N('s0', '크기 시작', 1, 64, 1, 4), N('s1', '크기 끝', 1, 64, 1, 24),
     N('th', '두께', 1, 16, 1, 3), N('rot', '회전 속도', -720, 720, 15, 0),
@@ -83,6 +87,7 @@ defNodes({
       const r = lerp(p.s0, p.s1, 1 - (1 - t) * (1 - t)), rot = (p.rot * t + (p.ang || 0)) * Math.PI / 180, al = p.fade ? 255 * (1 - t) : 255;
       const cr = Math.cos(rot), sr = Math.sin(rot), h = p.th / 2;
       const unit = SHAPE_LIB.make(p.type, p.n, p.inner, p.seed, r > 0 ? p.th / r : 1); // null = legacy shape
+      const OUT8 = [[1, 0], [-1, 0], [0, 1], [0, -1]], DIAG = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
       const r2 = r - p.th, asp = p.asp || 1, str = p.str ?? 1, fall = p.fall || 0;
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const dx = x + 0.5 - p.cx * W, dy = y + 0.5 - p.cy * H, dist = Math.hypot(dx, dy);
@@ -91,7 +96,8 @@ defNodes({
         let on;
         if (unit) {
           on = unit(rx / r, ry / r);
-          if (on && p.outline && p.type !== 'saw' && r2 > 0) on = !unit(rx / r2, ry / r2);
+          if (on && p.outline && p.type !== 'saw') { const T = p.th, s2 = T * 0.7071; // pixel erosion: even thickness on every shape
+            on = !OUT8.every(([ox, oy]) => unit((rx + ox * T + oy * 0) / r, (ry + oy * T) / r)) || !DIAG.every(([ox, oy]) => unit((rx + ox * s2) / r, (ry + oy * s2) / r)); }
         } else if (p.type === 'circle') on = ld <= r && !(p.outline && ld <= r - p.th);
         else if (p.type === 'ring') on = ld <= r && ld > r - p.th;
         else if (p.type === 'star') on = ld <= r * (0.4 + 0.6 * Math.pow(Math.abs(Math.cos(2.5 * Math.atan2(ry, rx))), 2));
