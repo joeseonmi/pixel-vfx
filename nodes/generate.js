@@ -71,26 +71,29 @@ defNodes({
     N('s0', '크기 시작', 1, 64, 1, 4), N('s1', '크기 끝', 1, 64, 1, 24),
     N('th', '두께', 1, 16, 1, 3), N('rot', '회전 속도', -720, 720, 15, 0),
     N('n', '꼭짓점/가시 수', 3, 32, 1, 5), N('inner', '안쪽 비율(작을수록 뾰족)', 0.05, 0.95, 0.01, 0.4),
-    N('ang', '기본 각도', 0, 360, 1, 0), N('seed', '시드(가시 폭발)', 0, 99, 1, 1),
+    N('ang', '기본 각도', 0, 360, 1, 0), N('asp', '세로비', 0.25, 4, 0.05, 1), N('seed', '시드(가시 폭발)', 0, 99, 1, 1),
+    N('fall', '중심감쇠', 0, 1, 0.05, 0), N('str', '강도', 0, 1, 0.01, 1),
     Col('color', '색', '#ffffff'), Chk('outline', '외곽선만', false), Chk('fade', '페이드', true)],
     run(c, p, t) {
       const { W, H } = S, id = c.createImageData(W, H), d = id.data, col = hex(p.color);
       const r = lerp(p.s0, p.s1, 1 - (1 - t) * (1 - t)), rot = (p.rot * t + (p.ang || 0)) * Math.PI / 180, al = p.fade ? 255 * (1 - t) : 255;
       const cr = Math.cos(rot), sr = Math.sin(rot), h = p.th / 2;
       const unit = SHAPE_LIB.make(p.type, p.n, p.inner, p.seed, r > 0 ? p.th / r : 1); // null = legacy shape
-      const r2 = r - p.th;
+      const r2 = r - p.th, asp = p.asp || 1, str = p.str ?? 1, fall = p.fall || 0;
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const dx = x + 0.5 - p.cx * W, dy = y + 0.5 - p.cy * H, dist = Math.hypot(dx, dy);
-        const rx = dx * cr + dy * sr, ry = -dx * sr + dy * cr; // local frame, shapes point up (-y)
+        const rx = dx * cr + dy * sr, ry = (-dx * sr + dy * cr) / asp; // local frame, shapes point up (-y); 세로비 stretches y
+        const ld = Math.hypot(rx, ry);
         let on;
         if (unit) {
           on = unit(rx / r, ry / r);
           if (on && p.outline && p.type !== 'saw' && r2 > 0) on = !unit(rx / r2, ry / r2);
-        } else if (p.type === 'circle') on = dist <= r && !(p.outline && dist <= r - p.th);
-        else if (p.type === 'ring') on = dist <= r && dist > r - p.th;
-        else if (p.type === 'star') on = dist <= r * (0.4 + 0.6 * Math.pow(Math.abs(Math.cos(2.5 * (Math.atan2(dy, dx) - rot))), 2));
+        } else if (p.type === 'circle') on = ld <= r && !(p.outline && ld <= r - p.th);
+        else if (p.type === 'ring') on = ld <= r && ld > r - p.th;
+        else if (p.type === 'star') on = ld <= r * (0.4 + 0.6 * Math.pow(Math.abs(Math.cos(2.5 * Math.atan2(ry, rx))), 2));
         else on = (Math.abs(rx) <= r && Math.abs(ry) <= h) || (Math.abs(ry) <= r && Math.abs(rx) <= h);
-        if (on) { const i = (y * W + x) * 4; d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = al; }
+        if (on) { const i = (y * W + x) * 4, k = Math.min(1, ld / r); // 중심감쇠: bright centre, fading toward the edge
+          d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = al * str * (1 - fall * k); }
       }
       c.putImageData(id, 0, 0);
     } },
