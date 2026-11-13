@@ -1,4 +1,42 @@
 // gen nodes. See nodes/API.md
+// Shape node library: unit-space shapes (radius 1, pointing up = -y). make() returns (u,v) => inside, or null for legacy types.
+const SHAPE_LIB = (() => {
+  const T = Math.PI * 2;
+  const inPoly = (P, x, y) => { let c = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; }
+    return c; };
+  const polar = (k, f) => Array.from({ length: k }, (_, i) => { const a = T * i / k - Math.PI / 2, rr = f(i); return [Math.cos(a) * rr, Math.sin(a) * rr]; });
+  const curve = (k, f) => Array.from({ length: k }, (_, i) => f(T * i / k));
+  const poly = P => (u, v) => inPoly(P, u, v);
+  function make(type, n, inner, seed, thU) {
+    n = Math.max(3, Math.round(n)); inner = Math.min(0.95, Math.max(0.05, inner));
+    switch (type) {
+      case 'tri': return poly(polar(3, () => 1.15).map(([x, y]) => [x, y + 0.28]));
+      case 'square': return (u, v) => Math.abs(u) <= 0.72 && Math.abs(v) <= 0.72;
+      case 'poly': return poly(polar(n, () => 1));
+      case 'diamond': { const w = 0.3 + 0.7 * inner; return poly([[0, -1], [w, 0], [0, 1], [-w, 0]]); }
+      case 'spike': return poly(polar(2 * n, i => (i % 2 ? inner : 1)));
+      case 'burst': { const R = rng(seed * 7919 + n);
+        const P = Array.from({ length: 2 * n }, (_, i) => { const a = T * (i + (R() - 0.5) * 0.5) / (2 * n) - Math.PI / 2,
+          rr = i % 2 ? inner * (0.7 + 0.5 * R()) : 0.6 + 0.4 * R(); return [Math.cos(a) * rr, Math.sin(a) * rr]; });
+        return poly(P); }
+      case 'sparkle': { const k = 0.3 + 0.75 * inner; return (u, v) => Math.abs(u) ** k + Math.abs(v) ** k <= 1; }
+      case 'saw': { const val = 0.5 + 0.45 * inner, P = polar(2 * n, i => (i % 2 ? val : 1)), hole = Math.max(0, val - thU);
+        return (u, v) => u * u + v * v > hole * hole && inPoly(P, u, v); }
+      case 'shard': { const w = 0.12 + 0.5 * inner; return poly([[0, -1], [w, -0.5], [w, 0.55], [0, 1], [-w, 0.55], [-w, -0.5]]); }
+      case 'arrow': { const g = 1.5 * (1 - inner); return poly([[0, -1], [0.8, 0.7], [0, -1 + g * 1.13], [-0.8, 0.7]]); }
+      case 'blade': { const w = Math.max(0.06, inner * 0.6), R = (w + 1 / w) / 2, o = (1 / w - w) / 2;
+        return (u, v) => (u - o) ** 2 + v * v <= R * R && (u + o) ** 2 + v * v <= R * R; }
+      case 'crescent': { const dd = 0.25 + 0.6 * (1 - inner); return (u, v) => u * u + v * v <= 1 && u * u + (v + dd) ** 2 > 1; }
+      case 'drop': { const m = 1 + 2 * inner; return poly(curve(64, a => [Math.sin(a) * Math.abs(Math.sin(a / 2)) ** m, -Math.cos(a)])); }
+      case 'heart': return poly(curve(72, a => [Math.sin(a) ** 3, -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) / 17 - 0.15]));
+      default: return null;
+    }
+  }
+  return { make };
+})();
+
 defNodes({
   particles: { en: 'Particles', cat: 'gen', label: '파티클', ins: [], params: [
     N('count', '개수', 1, 200, 1, 60), N('seed', '시드', 0, 99, 1, 1),
@@ -24,23 +62,34 @@ defNodes({
       c.globalAlpha = 1;
     } },
   shape: { en: 'Shape', cat: 'gen', label: '도형', ins: [], params: [
-    Sel('type', '종류', [['circle', '원'], ['ring', '링'], ['star', '별'], ['cross', '십자']], 'ring'),
+    Sel('type', '종류', [['circle', '원'], ['ring', '링'], ['star', '별(둥근)'], ['cross', '십자'],
+      ['tri', '삼각형'], ['square', '네모'], ['diamond', '마름모'], ['poly', '다각형'],
+      ['spike', '뾰족별'], ['burst', '가시 폭발'], ['sparkle', '반짝이'], ['saw', '톱니 링'],
+      ['shard', '수정 조각'], ['arrow', '화살촉'], ['blade', '칼날(렌즈)'], ['crescent', '초승달'],
+      ['drop', '물방울'], ['heart', '하트']], 'ring'),
     N('cx', '중심 X', 0, 1, 0.01, 0.5), N('cy', '중심 Y', 0, 1, 0.01, 0.5),
     N('s0', '크기 시작', 1, 64, 1, 4), N('s1', '크기 끝', 1, 64, 1, 24),
     N('th', '두께', 1, 16, 1, 3), N('rot', '회전 속도', -720, 720, 15, 0),
-    Col('color', '색', '#ffffff'), Chk('fade', '페이드', true)],
+    N('n', '꼭짓점/가시 수', 3, 32, 1, 5), N('inner', '안쪽 비율(작을수록 뾰족)', 0.05, 0.95, 0.01, 0.4),
+    N('ang', '기본 각도', 0, 360, 1, 0), N('seed', '시드(가시 폭발)', 0, 99, 1, 1),
+    Col('color', '색', '#ffffff'), Chk('outline', '외곽선만', false), Chk('fade', '페이드', true)],
     run(c, p, t) {
       const { W, H } = S, id = c.createImageData(W, H), d = id.data, col = hex(p.color);
-      const r = lerp(p.s0, p.s1, 1 - (1 - t) * (1 - t)), rot = p.rot * t * Math.PI / 180, al = p.fade ? 255 * (1 - t) : 255;
+      const r = lerp(p.s0, p.s1, 1 - (1 - t) * (1 - t)), rot = (p.rot * t + (p.ang || 0)) * Math.PI / 180, al = p.fade ? 255 * (1 - t) : 255;
       const cr = Math.cos(rot), sr = Math.sin(rot), h = p.th / 2;
+      const unit = SHAPE_LIB.make(p.type, p.n, p.inner, p.seed, r > 0 ? p.th / r : 1); // null = legacy shape
+      const r2 = r - p.th;
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const dx = x + 0.5 - p.cx * W, dy = y + 0.5 - p.cy * H, dist = Math.hypot(dx, dy);
+        const rx = dx * cr + dy * sr, ry = -dx * sr + dy * cr; // local frame, shapes point up (-y)
         let on;
-        if (p.type === 'circle') on = dist <= r;
+        if (unit) {
+          on = unit(rx / r, ry / r);
+          if (on && p.outline && p.type !== 'saw' && r2 > 0) on = !unit(rx / r2, ry / r2);
+        } else if (p.type === 'circle') on = dist <= r && !(p.outline && dist <= r - p.th);
         else if (p.type === 'ring') on = dist <= r && dist > r - p.th;
         else if (p.type === 'star') on = dist <= r * (0.4 + 0.6 * Math.pow(Math.abs(Math.cos(2.5 * (Math.atan2(dy, dx) - rot))), 2));
-        else { const rx = dx * cr + dy * sr, ry = -dx * sr + dy * cr;
-          on = (Math.abs(rx) <= r && Math.abs(ry) <= h) || (Math.abs(ry) <= r && Math.abs(rx) <= h); }
+        else on = (Math.abs(rx) <= r && Math.abs(ry) <= h) || (Math.abs(ry) <= r && Math.abs(rx) <= h);
         if (on) { const i = (y * W + x) * 4; d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = al; }
       }
       c.putImageData(id, 0, 0);
