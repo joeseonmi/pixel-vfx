@@ -70,7 +70,7 @@ defNodes({
       }
       c.globalAlpha = 1;
     } },
-  emitter: { en: 'Particle Emitter', cat: 'gen', label: '파티클 방출기', ins: [], params: [
+  emitter: { en: 'Particle Emitter', cat: 'gen', label: '파티클 방출기', ins: ['입자 모양(선택)'], params: [
     N('count', '개수', 1, 300, 1, 72), N('seed', '시드', 0, 999, 1, 1),
     Sel('emit', '방출', [['burst', '한번에 터짐(burst)'], ['stream', '계속 뿜기(stream)']], 'burst'),
     N('start', '시작 시점', 0, 1, 0.01, 0), N('span', '방출 구간', 0, 1, 0.01, 1),
@@ -81,15 +81,36 @@ defNodes({
     N('dir', '방향°', -180, 180, 1, -90), N('spread', '퍼짐°', 0, 360, 1, 360),
     N('speed', '속도(px/f)', 0, 8, 0.1, 1), N('speedVar', '속도 편차', 0, 1, 0.05, 0.5),
     N('grav', '중력', -0.5, 0.5, 0.01, 0), N('drag', '감속', 0, 0.3, 0.01, 0), N('wob', '흔들림', 0, 4, 0.1, 0),
-    N('s0', '시작 크기', 1, 16, 1, 2), N('s1', '끝 크기', 1, 16, 1, 1),
+    N('s0', '시작 크기', 1, 32, 1, 2), N('s1', '끝 크기', 1, 32, 1, 1),
     Sel('shape', '입자 모양', [['square', '네모'], ['circle', '원'], ['plus', '십자'], ['diamond', '마름모']], 'square'),
-    N('streak', '스트릭 늘림', 1, 8, 0.5, 1),
+    Chk('orient', '방향 따라 회전(연결한 모양)', true), N('streak', '스트릭 늘림', 1, 8, 0.5, 1),
     Sel('fade', '페이드', [['out', '사라짐(out)'], ['in', '나타남(in)'], ['inout', '나타났다 사라짐'], ['none', '없음']], 'out'),
     N('bright', '밝기', 0, 1, 0.01, 1), N('brightVar', '밝기 편차', 0, 1, 0.05, 0), Col('color', '색', '#ffffff'),
     Chk('loop', '루프(반복 방출)', false), N('floor', '바닥 y(px, 0=없음)', 0, 128, 1, 0), N('bounce', '튕김', 0, 1, 0.05, 0.35)],
     run(c, p, t, ins, nd, f) { // deterministic: every particle is re-simulated from its birth, step by step, for this frame
       const { W, H } = S, F = S.frames, col = hex(p.color), buf = new Float32Array(W * H), n = Math.round(p.count);
-      const stamp = (x, y, sz, v) => {
+      // optional sprite from the input: intensity (luma x alpha) inside its bounding box, normalised to 1
+      let spr = null;
+      if (nd?.in?.[0] != null) {
+        const sd = pix(ins[0]), I = new Float32Array(W * H);
+        let x0 = W, y0 = H, x1 = -1, y1 = -1, mx = 0;
+        for (let q = 0; q < W * H; q++) { const v = lum(sd, q * 4) * sd[q * 4 + 3] / 255; if (v > 0.02) { I[q] = v; const qx = q % W, qy = (q / W) | 0; x0 = Math.min(x0, qx); y0 = Math.min(y0, qy); x1 = Math.max(x1, qx); y1 = Math.max(y1, qy); mx = Math.max(mx, v); } }
+        if (x1 >= 0) spr = { I, x0, y0, x1, y1, mx, cx: (x0 + x1 + 1) / 2, cy: (y0 + y1 + 1) / 2, big: Math.max(x1 - x0 + 1, y1 - y0 + 1) };
+      }
+      const stamp = (x, y, sz, v, ang) => {
+        if (spr) { // sprite drawn so its longer side = sz px, optionally turned to face the motion (sprites point up)
+          const sc = sz / spr.big, R = Math.ceil(sz * 0.75) + 1, ca = Math.cos(ang), sa = Math.sin(ang);
+          for (let oy = -R; oy <= R; oy++) for (let ox = -R; ox <= R; ox++) {
+            const px = Math.round(x) + ox, py = Math.round(y) + oy;
+            if (px < 0 || py < 0 || px >= W || py >= H) continue;
+            const dx = px + 0.5 - x, dy = py + 0.5 - y, lx = dx * ca + dy * sa, ly = -dx * sa + dy * ca;
+            const sx = Math.floor(spr.cx + lx / sc), sy = Math.floor(spr.cy + ly / sc);
+            if (sx < spr.x0 || sy < spr.y0 || sx > spr.x1 || sy > spr.y1) continue;
+            const iv = spr.I[sy * W + sx] / spr.mx, i = py * W + px;
+            if (iv > 0 && v * iv > buf[i]) buf[i] = v * iv;
+          }
+          return;
+        }
         const h = sz / 2;
         for (let oy = 0; oy < sz; oy++) for (let ox = 0; ox < sz; ox++) {
           const dx = ox - h + 0.5, dy = oy - h + 0.5;
@@ -127,7 +148,8 @@ defNodes({
         if (v <= 0.02) continue;
         const sl = Math.hypot(vx, vy) || 1, wx = p.wob ? -vy / sl * Math.sin(a * 0.9 + ph) * p.wob : 0, wy = p.wob ? vx / sl * Math.sin(a * 0.9 + ph) * p.wob : 0;
         const L = (p.streak - 1) * Math.hypot(vx, vy), steps = Math.ceil(L);
-        for (let s = 0; s <= steps; s++) { const q = steps ? s / steps : 0; stamp(x + wx - vx / sl * L * q, y + wy - vy / sl * L * q, sz, v * (1 - 0.6 * q)); }
+        const rot = spr && p.orient && Math.hypot(vx, vy) > 1e-3 ? Math.atan2(vy, vx) + Math.PI / 2 : 0;
+        for (let s = 0; s <= steps; s++) { const q = steps ? s / steps : 0; stamp(x + wx - vx / sl * L * q, y + wy - vy / sl * L * q, sz, v * (1 - 0.6 * q), rot); }
       }
       const id = c.createImageData(W, H), d = id.data;
       for (let i = 0; i < W * H; i++) if (buf[i] > 0) { d[i * 4] = col[0] * buf[i]; d[i * 4 + 1] = col[1] * buf[i]; d[i * 4 + 2] = col[2] * buf[i]; d[i * 4 + 3] = 255; }
