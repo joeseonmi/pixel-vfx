@@ -1,5 +1,37 @@
 // color nodes. See nodes/API.md
+const PALMAP_PRESETS = {
+  '얼음': ['#1f4f9a', '#3aa0e8', '#9fdcf7', '#e0f6fd', '#ffffff'],
+  '불꽃': ['#3a0a0a', '#a3200f', '#ff5a14', '#ffb52e', '#fff3b0'],
+  '번개': ['#2a1f5c', '#5b6cff', '#a8c4ff', '#fff6a8', '#ffffff'],
+  '독': ['#1b2b12', '#3f7a1f', '#7fd13b', '#c8ff6a', '#f4ffd6'],
+  '마법': ['#2a0f4a', '#6a2bc4', '#b45cff', '#f0a8ff', '#ffffff'],
+  '피': ['#1a0306', '#5c0a14', '#a8121f', '#e8303a', '#ff9a8a'],
+  '황금': ['#3a2206', '#8a5a12', '#d9a21f', '#ffe066', '#fffbe0'],
+  '연기': ['#1c1c22', '#3d3d48', '#6b6b78', '#a3a3ad', '#e6e6ea'],
+  '흑백': ['#000000', '#ffffff'],
+};
 defNodes({
+  palmap: { en: 'Palette Map', cat: 'color', label: '팔레트 맵', ins: ['강도'], params: [
+    Pal('cols', '색 램프', PALMAP_PRESETS['얼음'], PALMAP_PRESETS),
+    N('cut', '투명 컷', 0, 1, 0.01, 0.13), N('shift', '밴드 이동', -1, 1, 0.05, 0),
+    Sel('interp', '보간', [['bands', '밴드(단계)'], ['smooth', '부드럽게']], 'bands'),
+    Sel('src', '기준', [['la', '밝기×알파'], ['alpha', '알파'], ['luma', '밝기']], 'la'),
+    N('op', '불투명도', 0, 1, 0.01, 1)],
+    run(c, p, t, [im]) { // intensity -> colour ramp; below the cut becomes transparent, the rest is remapped 0..1
+      c.drawImage(im, 0, 0);
+      const id = c.getImageData(0, 0, S.W, S.H), d = id.data, P = (p.cols || []).map(hex), n = P.length, A = Math.round(255 * p.op);
+      if (!n) return;
+      for (let i = 0; i < d.length; i += 4) {
+        const a = d[i + 3] / 255, v = p.src === 'alpha' ? a : p.src === 'luma' ? (a > 0 ? lum(d, i) : 0) : lum(d, i) * a;
+        if (v <= 0 || v <= p.cut) { d[i + 3] = 0; continue; }
+        const u = clamp((v - p.cut) / Math.max(1e-6, 1 - p.cut) + p.shift);
+        let k;
+        if (p.interp === 'smooth' && n > 1) { const x = u * (n - 1), j = Math.min(n - 2, Math.floor(x)); k = lerpC(P[j], P[j + 1], x - j); }
+        else k = P[Math.min(n - 1, Math.floor(u * n))];
+        d[i] = k[0]; d[i + 1] = k[1]; d[i + 2] = k[2]; d[i + 3] = A;
+      }
+      c.putImageData(id, 0, 0);
+    } },
   ramp: { en: 'ColorRamp', cat: 'color', label: '색상 램프', ins: ['입력'], params: [
     Col('a', '색 A (0)', '#3a0a0a'), Col('b', '색 B (0.5)', '#ff5a14'), Col('c', '색 C (1)', '#ffe45c'),
     N('steps', '포스터화', 0, 8, 1, 0)],

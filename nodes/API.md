@@ -32,6 +32,7 @@ defNodes({
 - `Sel(k, l, [['value','표시'], ...], def)` dropdown
 - `Chk(k, l, bool)` checkbox
 - `Txt(k, l, 'str')` free text
+- `Pal(k, l, ['#rrggbb', ...], { name: [...] })` editable color list (+/-/reverse, preset menu); `p[k]` is an array of hex
 
 ## Helpers (all in core, defined once)
 - `lerp(a,b,k)`, `clamp(v,a=0,b=1)`, `lerpC(rgbA,rgbB,k)` (rounded rgb arrays)
