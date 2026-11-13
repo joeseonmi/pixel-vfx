@@ -10,6 +10,14 @@
 body{margin:0;height:100vh;display:flex;flex-direction:column;background:#0e1019;color:#d6d9e8;font:13px sans-serif}
 .bar{display:flex;gap:10px;align-items:center;padding:6px 10px;background:#161929;border-bottom:1px solid #000;flex-wrap:wrap}
 .bar input[type=number]{width:56px}
+#saveInfo{font-size:11px;color:#8a93b8;margin-left:auto}
+#store{position:fixed;top:44px;right:10px;width:310px;max-height:75vh;overflow:auto;background:#1b1f33;border:1px solid #3a4060;border-radius:8px;padding:10px;z-index:50;box-shadow:0 8px 24px #0008}
+#store[hidden]{display:none}#store .sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+#store .sr{display:flex;gap:6px;margin-bottom:6px}#store .sr input{flex:1;min-width:0}#store .hint{font-size:11px;color:#8a93b8;margin:2px 0 6px}
+#store .si{display:flex;gap:8px;align-items:center;padding:6px;border-radius:6px;background:#22273d;margin-top:6px}#store .si.cur{outline:1px solid #6cf}
+#store .si img{width:44px;height:44px;image-rendering:pixelated;background:#111;border-radius:4px;flex:none}
+#store .si .nm{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#store .si .nm small{display:block;color:#889}
+#store .si button{padding:2px 6px}
 .brand{display:flex;align-items:center;gap:6px;font-weight:700;font-size:15px;letter-spacing:.5px;color:#ffc83d;margin-right:6px}
 .brand img{width:24px;height:24px}
 main{flex:1;display:flex;min-height:0}
@@ -70,6 +78,15 @@ h3{margin:12px 0 4px}
   <label>배경 <select id="bg"><option value="dark">어둡게</option><option value="checker">체크</option></select></label>
   <select id="preset"><option value="">프리셋</option><option value="fire">불꽃</option><option value="hit">타격</option><option value="slash">참격</option><option value="heal">힐</option></select>
   <button id="tlBtn" title="아래 타임라인 보이기/숨기기">타임라인</button>
+  <button id="stBtn" title="이름 붙여 저장하고 불러오기 (⌘S / Ctrl+S 저장)">저장함</button>
+  <span id="saveInfo"></span>
+</div>
+<div id="store" hidden>
+  <div class="sh"><b>저장함</b><button id="stClose">✕</button></div>
+  <div class="sr"><input id="stName" placeholder="작업 이름"><button id="stSave">저장</button></div>
+  <div class="hint">이 브라우저에 보관돼요. 다른 기기로 옮기려면 JSON 저장을 써 주세요.</div>
+  <button id="stNew">＋ 새 작업 (빈 화면)</button>
+  <div id="stList"></div>
 </div>
 <main>
   <div id="pal"><input id="q" placeholder="검색 (영문/한글)"><div class="tabs" id="tabs"></div><div id="pl"></div></div>
@@ -665,29 +682,101 @@ $('batch').onclick = async () => { // one sheet per image index, applied to all 
   }
   im.forEach((n, j) => (n.p.index = old[j])); touch(); showParams();
 };
-$('save').onclick = () => save(new Blob([JSON.stringify({ S, nodes: nodes.map(({ id, type, x, y, p, k, in: i }) => ({ id, type, x, y, p, k, in: i })) })], { type: 'application/json' }), 'dotvfx_graph.json');
+const graphJSON = () => JSON.stringify({ S, nodes: nodes.map(({ id, type, x, y, p, k, in: i }) => ({ id, type, x, y, p, k, in: i })) });
+$('save').onclick = () => save(new Blob([graphJSON()], { type: 'application/json' }), (projName || 'dotvfx_graph') + '.json');
+async function applyGraph(o) { // throws on a bad graph; replaces the current one
+  const list = o.nodes.filter(n => DEFS[n.type]);
+  await Promise.all(list.flatMap(n => n.p?.imgs || []).map(decode));
+  if (list.filter(n => n.type === 'output').length !== 1) throw new Error('출력 노드는 정확히 1개여야 합니다');
+  if (![32, 48, 64, 96, 128].includes(o.S.W)) throw new Error('지원하지 않는 캔버스 크기');
+  Object.assign(S, { W: o.S.W, H: o.S.W, frames: clamp(o.S.frames, 1, 64), fps: clamp(o.S.fps, 1, 60), bg: o.S.bg, loop: o.S.loop !== false });
+  const ids = new Set(list.map(n => n.id));
+  nodes = list.map(n => ({ id: n.id, type: n.type, x: n.x, y: n.y, p: { ...defaults(DEFS[n.type]), ...n.p }, k: n.k || {},
+    in: DEFS[n.type].ins.map((_, i) => (ids.has(n.in?.[i]) ? n.in[i] : null)) }));
+  nextId = Math.max(...ids) + 1; frame = 0;
+  syncUI(); buildGraph(); select(outNode().id); touch(); fitView();
+}
 $('load').onclick = () => $('file').click();
 $('file').onchange = e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
   const r = new FileReader();
   r.onload = async () => {
-    try {
-      const o = JSON.parse(r.result);
-      const list = o.nodes.filter(n => DEFS[n.type]);
-      await Promise.all(list.flatMap(n => n.p?.imgs || []).map(decode));
-      if (list.filter(n => n.type === 'output').length !== 1) throw new Error('출력 노드는 정확히 1개여야 합니다');
-      if (![32, 48, 64, 96, 128].includes(o.S.W)) throw new Error('지원하지 않는 캔버스 크기');
-      Object.assign(S, { W: o.S.W, H: o.S.W, frames: clamp(o.S.frames, 1, 64), fps: clamp(o.S.fps, 1, 60), bg: o.S.bg, loop: o.S.loop !== false });
-      const ids = new Set(list.map(n => n.id));
-      nodes = list.map(n => ({ id: n.id, type: n.type, x: n.x, y: n.y, p: { ...defaults(DEFS[n.type]), ...n.p }, k: n.k || {},
-        in: DEFS[n.type].ins.map((_, i) => (ids.has(n.in?.[i]) ? n.in[i] : null)) }));
-      nextId = Math.max(...ids) + 1; frame = 0;
-      syncUI(); buildGraph(); select(outNode().id);
-    } catch (err) { alert('불러오기 실패: ' + err.message); }
+    try { await applyGraph(JSON.parse(r.result)); projName = f.name.replace(/\.json$/i, ''); info('불러옴'); }
+    catch (err) { alert('불러오기 실패: ' + err.message); }
   };
   r.readAsText(f);
 };
+
+// ---------- saving: autosave + named saves, kept in this browser (localStorage) ----------
+const LS = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } } };
+let projName = '', lastAuto = '';
+const hhmm = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const info = msg => { $('saveInfo').textContent = (projName ? `「${projName}」 · ` : '') + msg; };
+function autosave() {
+  const g = graphJSON();
+  if (g === lastAuto) return;
+  if (LS.set('dotvfx_auto', { name: projName, g })) { lastAuto = g; info('자동 저장됨 ' + hhmm(Date.now())); }
+  else info('⚠ 저장 공간 부족 — 자동 저장 실패 (JSON 저장을 써 주세요)');
+}
+setInterval(autosave, 1500);
+addEventListener('pagehide', autosave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) autosave(); });
+
+const saves = () => LS.get('dotvfx_saves', []);
+function thumb() {
+  try { const c = document.createElement('canvas'); c.width = c.height = S.W; c.getContext('2d').drawImage(evaluate(outNode(), Math.floor(S.frames / 2)), 0, 0); return c.toDataURL(); }
+  catch (e) { return ''; }
+}
+function saveAs(name) {
+  name = name.trim();
+  if (!name) return $('stName').focus();
+  const list = saves().filter(x => x.name !== name);
+  list.unshift({ name, t: Date.now(), thumb: thumb(), g: graphJSON() });
+  if (!LS.set('dotvfx_saves', list)) return info('⚠ 저장 공간이 부족해서 저장하지 못했어요. 안 쓰는 저장을 지우거나 JSON 저장을 써 주세요');
+  projName = name; info('저장됨 ' + hhmm(Date.now())); renderStore();
+}
+function renderStore() {
+  const box = $('stList'), list = saves();
+  $('stName').value ||= projName;
+  $('stSave').textContent = list.some(x => x.name === $('stName').value.trim()) ? '덮어쓰기' : '저장';
+  box.innerHTML = list.length ? '' : '<div class="hint">아직 저장한 작업이 없어요.</div>';
+  for (const x of list) {
+    const row = document.createElement('div'), nm = document.createElement('div'), sm = document.createElement('small');
+    row.className = 'si' + (x.name === projName ? ' cur' : '');
+    nm.className = 'nm'; nm.textContent = x.name; nm.title = x.name;
+    sm.textContent = new Date(x.t).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); nm.append(sm);
+    const img = new Image(); if (x.thumb) img.src = x.thumb;
+    const op = document.createElement('button'), del = document.createElement('button');
+    op.textContent = '열기'; del.textContent = '삭제';
+    op.onclick = async () => {
+      try { await applyGraph(JSON.parse(x.g)); projName = x.name; $('stName').value = x.name; info('열림'); renderStore(); }
+      catch (err) { info('⚠ 열기 실패: ' + err.message); }
+    };
+    del.onclick = () => { // two clicks to delete
+      if (del.textContent !== '정말?') { del.textContent = '정말?'; setTimeout(() => (del.textContent = '삭제'), 2500); return; }
+      LS.set('dotvfx_saves', saves().filter(y => y.name !== x.name)); renderStore();
+    };
+    row.append(img, nm, op, del); box.append(row);
+  }
+}
+$('stBtn').onclick = () => { $('store').hidden = !$('store').hidden; if (!$('store').hidden) { $('stName').value = projName; renderStore(); } };
+$('stClose').onclick = () => ($('store').hidden = true);
+$('stSave').onclick = () => saveAs($('stName').value);
+$('stName').oninput = renderStore;
+$('stName').onkeydown = e => { if (e.key === 'Enter') saveAs($('stName').value); };
+$('stNew').onclick = () => {
+  nodes = []; nextId = 1; add('output', 300, 120); projName = ''; frame = 0;
+  buildGraph(); select(outNode().id); touch(); fitView(); $('stName').value = ''; info('새 작업'); renderStore();
+};
+addEventListener('keydown', e => { // ⌘S / Ctrl+S: save to the current name, or open the store to name it
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
+  e.preventDefault();
+  if (projName) saveAs(projName);
+  else { $('store').hidden = false; renderStore(); $('stName').focus(); }
+});
+$('preset').addEventListener('change', () => { projName = ''; });
 
 // ---------- self check ----------
 function selfCheck() {
@@ -751,6 +840,10 @@ applyUI();
 renderPal();
 loadPreset('fire');
 selfCheck();
+{ // reopen where we left off
+  const a = LS.get('dotvfx_auto', null);
+  if (a?.g) applyGraph(JSON.parse(a.g)).then(() => { projName = a.name || ''; lastAuto = a.g; info('이전 작업을 이어서 열었어요'); }).catch(() => {});
+}
 requestAnimationFrame(tick);
 </script>
 </body>
