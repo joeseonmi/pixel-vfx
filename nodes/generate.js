@@ -162,12 +162,12 @@ defNodes({
       ['shard', '파편(shard)'], ['crystal', '수정(육각)'], ['arrow', '화살촉'], ['blade', '칼날(렌즈)'], ['crescent', '초승달'],
       ['sword', '큰 칼'], ['drop', '물방울'], ['heart', '하트']], 'ring'),
     N('cx', '중심 X', 0, 1, 0.01, 0.5), N('cy', '중심 Y', 0, 1, 0.01, 0.5),
-    N('s0', '크기 시작', 1, 64, 1, 4), N('s1', '크기 끝', 1, 64, 1, 24),
+    N('s0', '크기 시작', 1, 64, 1, 16), N('s1', '크기 끝', 1, 64, 1, 16),
     N('th', '두께', 1, 16, 1, 3), N('rot', '회전 속도', -720, 720, 15, 0),
     N('n', '꼭짓점/가시 수', 3, 32, 1, 5), N('inner', '안쪽 비율(작을수록 뾰족)', 0.05, 0.95, 0.01, 0.4),
     N('ang', '기본 각도', 0, 360, 1, 0), N('asp', '세로비', 0.25, 4, 0.05, 1), N('seed', '시드(가시 폭발)', 0, 99, 1, 1),
     N('fall', '중심감쇠', 0, 1, 0.05, 0), Sel('fmode', '감쇠 방식', [['bright', '어둡게'], ['alpha', '투명하게']], 'bright'), N('str', '강도', 0, 1, 0.01, 1),
-    Col('color', '색', '#ffffff'), Chk('outline', '외곽선만', false), Chk('fade', '페이드', true)],
+    Col('color', '색', '#ffffff'), Chk('outline', '외곽선만', false), Chk('fade', '페이드', false)],
     run(c, p, t) {
       const { W, H } = S, id = c.createImageData(W, H), d = id.data, col = hex(p.color);
       const r = lerp(p.s0, p.s1, 1 - (1 - t) * (1 - t)), rot = (p.rot * t + (p.ang || 0)) * Math.PI / 180, al = p.fade ? 255 * (1 - t) : 255;
