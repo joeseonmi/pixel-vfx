@@ -24,12 +24,16 @@ const SHAPE_LIB = (() => {
       case 'sparkle': { const k = 0.3 + 0.75 * inner; return (u, v) => Math.abs(u) ** k + Math.abs(v) ** k <= 1; }
       case 'saw': { const val = 0.5 + 0.45 * inner, P = polar(2 * n, i => (i % 2 ? val : 1)), hole = Math.max(0, val - thU);
         return (u, v) => u * u + v * v > hole * hole && inPoly(P, u, v); }
-      case 'shard': { const w = 0.12 + 0.5 * inner; return poly([[0, -1], [w, -0.5], [w, 0.55], [0, 1], [-w, 0.55], [-w, -0.5]]); }
+      case 'crystal': { const w = 0.12 + 0.5 * inner; return poly([[0, -1], [w, -0.5], [w, 0.55], [0, 1], [-w, 0.55], [-w, -0.5]]); }
+      case 'shard': { // long taper to a sharp top, bulge low (widest at 72%), short rounded point at the bottom
+        const w = 0.1 + 0.6 * inner, prof = t => (t <= 0.72 ? w * (t / 0.72) ** 0.9 : w * Math.max(0, 1 - ((t - 0.72) / 0.28) ** 1.6) ** 0.6), R = [], L = [];
+        for (let i = 0; i <= 40; i++) { const t = i / 40, v = 2 * t - 1; R.push([prof(t), v]); L.unshift([-prof(t), v]); }
+        return Object.assign(poly([...R, ...L]), { c: [0, 0.44] }); }
       case 'arrow': { const g = 1.5 * (1 - inner); return poly([[0, -1], [0.8, 0.7], [0, -1 + g * 1.13], [-0.8, 0.7]]); }
       case 'blade': { const w = Math.max(0.06, inner * 0.6), R = (w + 1 / w) / 2, o = (1 / w - w) / 2;
         return (u, v) => (u - o) ** 2 + v * v <= R * R && (u + o) ** 2 + v * v <= R * R; }
       case 'crescent': { const dd = 0.25 + 0.6 * (1 - inner); return (u, v) => u * u + v * v <= 1 && u * u + (v + dd) ** 2 > 1; }
-      case 'drop': { const m = 1 + 2 * inner; return poly(curve(64, a => [Math.sin(a) * Math.abs(Math.sin(a / 2)) ** m, -Math.cos(a)])); }
+      case 'drop': { const m = 1 + 2 * inner; return Object.assign(poly(curve(64, a => [Math.sin(a) * Math.abs(Math.sin(a / 2)) ** m, -Math.cos(a)])), { c: [0, 0.4] }); }
       case 'heart': return poly(curve(72, a => [Math.sin(a) ** 3, -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) / 17 - 0.15]));
       default: return null;
     }
@@ -65,14 +69,14 @@ defNodes({
     Sel('type', '종류', [['circle', '원'], ['ring', '링'], ['star', '별(둥근)'], ['cross', '십자'],
       ['tri', '삼각형'], ['square', '네모'], ['diamond', '마름모'], ['poly', '다각형'],
       ['spike', '뾰족별'], ['burst', '가시 폭발'], ['sparkle', '반짝이'], ['saw', '톱니 링'],
-      ['shard', '수정 조각'], ['arrow', '화살촉'], ['blade', '칼날(렌즈)'], ['crescent', '초승달'],
+      ['shard', '파편(shard)'], ['crystal', '수정(육각)'], ['arrow', '화살촉'], ['blade', '칼날(렌즈)'], ['crescent', '초승달'],
       ['drop', '물방울'], ['heart', '하트']], 'ring'),
     N('cx', '중심 X', 0, 1, 0.01, 0.5), N('cy', '중심 Y', 0, 1, 0.01, 0.5),
     N('s0', '크기 시작', 1, 64, 1, 4), N('s1', '크기 끝', 1, 64, 1, 24),
     N('th', '두께', 1, 16, 1, 3), N('rot', '회전 속도', -720, 720, 15, 0),
     N('n', '꼭짓점/가시 수', 3, 32, 1, 5), N('inner', '안쪽 비율(작을수록 뾰족)', 0.05, 0.95, 0.01, 0.4),
     N('ang', '기본 각도', 0, 360, 1, 0), N('asp', '세로비', 0.25, 4, 0.05, 1), N('seed', '시드(가시 폭발)', 0, 99, 1, 1),
-    N('fall', '중심감쇠', 0, 1, 0.05, 0), N('str', '강도', 0, 1, 0.01, 1),
+    N('fall', '중심감쇠', 0, 1, 0.05, 0), Sel('fmode', '감쇠 방식', [['bright', '어둡게'], ['alpha', '투명하게']], 'bright'), N('str', '강도', 0, 1, 0.01, 1),
     Col('color', '색', '#ffffff'), Chk('outline', '외곽선만', false), Chk('fade', '페이드', true)],
     run(c, p, t) {
       const { W, H } = S, id = c.createImageData(W, H), d = id.data, col = hex(p.color);
@@ -92,8 +96,12 @@ defNodes({
         else if (p.type === 'ring') on = ld <= r && ld > r - p.th;
         else if (p.type === 'star') on = ld <= r * (0.4 + 0.6 * Math.pow(Math.abs(Math.cos(2.5 * Math.atan2(ry, rx))), 2));
         else on = (Math.abs(rx) <= r && Math.abs(ry) <= h) || (Math.abs(ry) <= r && Math.abs(rx) <= h);
-        if (on) { const i = (y * W + x) * 4, k = Math.min(1, ld / r); // 중심감쇠: bright centre, fading toward the edge
-          d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = al * str * (1 - fall * k); }
+        if (on) { // 중심감쇠: bright core fading toward the outline (k = 0 centre .. 1 edge, follows the shape)
+          let k = 0;
+          if (fall > 0) { if (unit) { const [ax, ay] = unit.c || [0, 0], u = rx / r - ax, v = ry / r - ay; let lo = 0, hi = 1; // shrink the shape toward its bright core until the pixel falls outside
+              for (let it = 0; it < 10; it++) { const m = (lo + hi) / 2; if (m > 0 && unit(ax + u / m, ay + v / m)) hi = m; else lo = m; } k = hi; } else k = Math.min(1, ld / r); }
+          const g = 1 - fall * k, i = (y * W + x) * 4, b = p.fmode === 'alpha' ? str : str * g;
+          d[i] = col[0] * b; d[i + 1] = col[1] * b; d[i + 2] = col[2] * b; d[i + 3] = p.fmode === 'alpha' ? al * str * g : al; }
       }
       c.putImageData(id, 0, 0);
     } },
