@@ -11,9 +11,10 @@ body{margin:0;height:100vh;display:flex;flex-direction:column;background:#0e1019
 .bar{display:flex;gap:10px;align-items:center;padding:6px 10px;background:#161929;border-bottom:1px solid #000;flex-wrap:wrap}
 .bar input[type=number]{width:56px}
 #saveInfo{font-size:11px;color:#8a93b8;margin-left:auto}
-#store{position:fixed;top:44px;right:10px;width:310px;max-height:75vh;overflow:auto;background:#1b1f33;border:1px solid #3a4060;border-radius:8px;padding:10px;z-index:50;box-shadow:0 8px 24px #0008}
-#store[hidden]{display:none}#store .sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-#store .sr{display:flex;gap:6px;margin-bottom:6px}#store .sr input{flex:1;min-width:0}#store .hint{font-size:11px;color:#8a93b8;margin:2px 0 6px}
+#store,#newp{position:fixed;top:44px;right:10px;width:310px;max-height:75vh;overflow:auto;background:#1b1f33;border:1px solid #3a4060;border-radius:8px;padding:10px;z-index:50;box-shadow:0 8px 24px #0008}
+#store[hidden],#newp[hidden]{display:none}#store .sh,#newp .sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+#store .sr{display:flex;gap:6px;margin-bottom:6px}#store .sr input{flex:1;min-width:0}#store .hint,#newp .hint{font-size:11px;color:#8a93b8;margin:2px 0 6px}
+#newp label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0}#newp label input:not([type=checkbox]),#newp label select{width:160px}#newp #npMake{width:100%;margin-top:6px;padding:6px}
 #store .si{display:flex;gap:8px;align-items:center;padding:6px;border-radius:6px;background:#22273d;margin-top:6px}#store .si.cur{outline:1px solid #6cf}
 #store .si img{width:44px;height:44px;image-rendering:pixelated;background:#111;border-radius:4px;flex:none}
 #store .si .nm{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#store .si .nm small{display:block;color:#889}
@@ -78,14 +79,26 @@ h3{margin:12px 0 4px}
   <label>배경 <select id="bg"><option value="dark">어둡게</option><option value="checker">체크</option></select></label>
   <select id="preset"><option value="">프리셋</option><option value="fire">불꽃</option><option value="hit">타격</option><option value="slash">참격</option><option value="heal">힐</option></select>
   <button id="tlBtn" title="아래 타임라인 보이기/숨기기">타임라인</button>
+  <button id="npBtn" title="새 프로젝트 만들기">새 프로젝트</button>
   <button id="stBtn" title="이름 붙여 저장하고 불러오기 (⌘S / Ctrl+S 저장)">저장함</button>
   <span id="saveInfo"></span>
+</div>
+<div id="newp" hidden>
+  <div class="sh"><b>새 프로젝트</b><button id="npClose">✕</button></div>
+  <label>이름 <input id="npName"></label>
+  <label>크기 <select id="npSize"></select></label>
+  <label>프레임 <input id="npFrames" type="number" min="1" max="64"></label>
+  <label>FPS <input id="npFps" type="number" min="1" max="60"></label>
+  <label>루프 <input id="npLoop" type="checkbox"></label>
+  <label>시작 <select id="npStart"><option value="">빈 화면</option><option value="fire">불꽃 프리셋</option><option value="hit">타격 프리셋</option><option value="slash">참격 프리셋</option><option value="heal">힐 프리셋</option></select></label>
+  <div class="hint" id="npNote"></div>
+  <button id="npMake">만들기</button>
 </div>
 <div id="store" hidden>
   <div class="sh"><b>저장함</b><button id="stClose">✕</button></div>
   <div class="sr"><input id="stName" placeholder="작업 이름"><button id="stSave">저장</button></div>
   <div class="hint">이 브라우저에 보관돼요. 다른 기기로 옮기려면 JSON 저장을 써 주세요.</div>
-  <button id="stNew">＋ 새 작업 (빈 화면)</button>
+  <button id="stNew">＋ 새 프로젝트</button>
   <div id="stList"></div>
 </div>
 <main>
@@ -761,14 +774,46 @@ function renderStore() {
     row.append(img, nm, op, del); box.append(row);
   }
 }
-$('stBtn').onclick = () => { $('store').hidden = !$('store').hidden; if (!$('store').hidden) { $('stName').value = projName; renderStore(); } };
+$('stBtn').onclick = () => { $('newp').hidden = true; $('store').hidden = !$('store').hidden; if (!$('store').hidden) { $('stName').value = projName; renderStore(); } };
 $('stClose').onclick = () => ($('store').hidden = true);
 $('stSave').onclick = () => saveAs($('stName').value);
 $('stName').oninput = renderStore;
 $('stName').onkeydown = e => { if (e.key === 'Enter') saveAs($('stName').value); };
-$('stNew').onclick = () => {
-  nodes = []; nextId = 1; add('output', 300, 120); projName = ''; frame = 0;
-  buildGraph(); select(outNode().id); touch(); fitView(); $('stName').value = ''; info('새 작업'); renderStore();
+// ---------- new project: name + canvas settings; the current work is kept in the store first ----------
+function isDirty() { // current work has changes that are not in the store
+  const sv = saves().find(x => x.name === projName);
+  return sv ? sv.g !== graphJSON() : nodes.length > 1;
+}
+function openNew() {
+  $('store').hidden = true;
+  const names = new Set(saves().map(x => x.name));
+  let i = 1; while (names.has('새 프로젝트 ' + i)) i++;
+  $('npName').value = '새 프로젝트 ' + i;
+  $('npSize').innerHTML = $('size').innerHTML; $('npSize').value = S.W;
+  $('npFrames').value = S.frames; $('npFps').value = S.fps; $('npLoop').checked = S.loop; $('npStart').value = ''; ['npFrames', 'npFps', 'npLoop'].forEach(id => ($(id).disabled = false));
+  $('npNote').textContent = isDirty() ? `지금 작업${projName ? `「${projName}」` : ''}은 만들기 전에 저장함에 자동으로 보관돼요.` : '';
+  $('newp').hidden = false; $('npName').select();
+}
+$('npBtn').onclick = () => ($('newp').hidden ? openNew() : ($('newp').hidden = true));
+$('stNew').onclick = openNew;
+$('npClose').onclick = () => ($('newp').hidden = true);
+$('npStart').onchange = () => { // presets come with their own frame count / loop
+  const v = !!$('npStart').value;
+  ['npFrames', 'npFps', 'npLoop'].forEach(id => ($(id).disabled = v));
+  $('npNote').textContent = v ? '프리셋은 자기 프레임·FPS·루프 설정으로 시작해요 (크기는 고른 대로).' : (isDirty() ? '지금 작업은 만들기 전에 저장함에 자동으로 보관돼요.' : '');
+};
+$('npName').onkeydown = e => { if (e.key === 'Enter') $('npMake').click(); };
+$('npMake').onclick = () => {
+  const name = $('npName').value.trim();
+  if (!name) return $('npName').focus();
+  if (saves().some(x => x.name === name)) { $('npNote').textContent = '⚠ 같은 이름의 작업이 이미 있어요. 다른 이름을 써 주세요.'; return; }
+  if (isDirty()) saveAs(projName || '이름 없는 작업 ' + new Date().toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+  const sz = +$('npSize').value;
+  Object.assign(S, { W: sz, H: sz, frames: clamp(Math.round(+$('npFrames').value) || 16, 1, 64), fps: clamp(Math.round(+$('npFps').value) || 12, 1, 60), loop: $('npLoop').checked });
+  if ($('npStart').value) loadPreset($('npStart').value);
+  else { nodes = []; nextId = 1; add('output', 300, 120); frame = 0; syncUI(); buildGraph(); select(outNode().id); touch(); }
+  outNode().p.cols = S.frames; frame = 0; syncUI(); fitView();
+  projName = name; saveAs(name); $('newp').hidden = true; info('새 프로젝트를 만들었어요');
 };
 addEventListener('keydown', e => { // ⌘S / Ctrl+S: save to the current name, or open the store to name it
   if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
