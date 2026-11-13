@@ -1,5 +1,6 @@
 // gen nodes. See nodes/API.md
 // Shape node library: unit-space shapes (radius 1, pointing up = -y). make() returns (u,v) => inside, or null for legacy types.
+const TAU0 = Math.PI * 2; // generate.js-local
 const SHAPE_LIB = (() => {
   const T = Math.PI * 2;
   const inPoly = (P, x, y) => { let c = false;
@@ -68,6 +69,69 @@ defNodes({
         else c.fillRect(Math.round(x - sz / 2), Math.round(y - sz / 2), sz, sz);
       }
       c.globalAlpha = 1;
+    } },
+  emitter: { en: 'Particle Emitter', cat: 'gen', label: '파티클 방출기', ins: [], params: [
+    N('count', '개수', 1, 300, 1, 72), N('seed', '시드', 0, 999, 1, 1),
+    Sel('emit', '방출', [['burst', '한번에 터짐(burst)'], ['stream', '계속 뿜기(stream)']], 'burst'),
+    N('start', '시작 시점', 0, 1, 0.01, 0), N('span', '방출 구간', 0, 1, 0.01, 1),
+    N('life', '수명(루프비)', 0.02, 1, 0.01, 0.5), N('lifeVar', '수명 편차', 0, 1, 0.05, 0.3),
+    Sel('area', '방출 영역', [['point', '점'], ['circle', '원 안'], ['ring', '원 둘레'], ['box', '사각형'], ['line', '선']], 'point'),
+    N('cx', 'x', 0, 1, 0.01, 0.5), N('cy', 'y', 0, 1, 0.01, 0.5), N('aw', '영역 폭', 0, 128, 1, 8), N('ah', '영역 높이', 0, 128, 1, 8),
+    Sel('dmode', '방향 모드', [['fixed', '고정 방향'], ['outward', '영역 바깥으로']], 'fixed'),
+    N('dir', '방향°', -180, 180, 1, -90), N('spread', '퍼짐°', 0, 360, 1, 360),
+    N('speed', '속도(px/f)', 0, 8, 0.1, 1), N('speedVar', '속도 편차', 0, 1, 0.05, 0.5),
+    N('grav', '중력', -0.5, 0.5, 0.01, 0), N('drag', '감속', 0, 0.3, 0.01, 0), N('wob', '흔들림', 0, 4, 0.1, 0),
+    N('s0', '시작 크기', 1, 16, 1, 2), N('s1', '끝 크기', 1, 16, 1, 1),
+    Sel('shape', '입자 모양', [['square', '네모'], ['circle', '원'], ['plus', '십자'], ['diamond', '마름모']], 'square'),
+    N('streak', '스트릭 늘림', 1, 8, 0.5, 1),
+    Sel('fade', '페이드', [['out', '사라짐(out)'], ['in', '나타남(in)'], ['inout', '나타났다 사라짐'], ['none', '없음']], 'out'),
+    N('bright', '밝기', 0, 1, 0.01, 1), N('brightVar', '밝기 편차', 0, 1, 0.05, 0), Col('color', '색', '#ffffff'),
+    Chk('loop', '루프(반복 방출)', false), N('floor', '바닥 y(px, 0=없음)', 0, 128, 1, 0), N('bounce', '튕김', 0, 1, 0.05, 0.35)],
+    run(c, p, t, ins, nd, f) { // deterministic: every particle is re-simulated from its birth, step by step, for this frame
+      const { W, H } = S, F = S.frames, col = hex(p.color), buf = new Float32Array(W * H), n = Math.round(p.count);
+      const stamp = (x, y, sz, v) => {
+        const h = sz / 2;
+        for (let oy = 0; oy < sz; oy++) for (let ox = 0; ox < sz; ox++) {
+          const dx = ox - h + 0.5, dy = oy - h + 0.5;
+          if (p.shape === 'circle' && sz >= 3 && dx * dx + dy * dy > h * h) continue;
+          if (p.shape === 'plus' && sz >= 3 && Math.abs(dx) > 0.6 && Math.abs(dy) > 0.6) continue;
+          if (p.shape === 'diamond' && sz >= 3 && Math.abs(dx) + Math.abs(dy) > h) continue;
+          const px = Math.round(x - h + ox), py = Math.round(y - h + oy);
+          if (px >= 0 && py >= 0 && px < W && py < H) { const i = py * W + px; if (v > buf[i]) buf[i] = v; }
+        }
+      };
+      for (let i = 0; i < n; i++) {
+        const R = rng(p.seed * 7919 + i * 13 + 1);
+        const tb = p.start * F + (p.emit === 'stream' ? (i / n) * p.span * F : 0);
+        const lifeF = Math.max(1, p.life * F * (1 - p.lifeVar * R()));
+        let a = f - tb;
+        if (p.loop) a = ((a % F) + F) % F;
+        if (a < 0 || a >= lifeF) continue;
+        // spawn point
+        const cx = p.cx * W, cy = p.cy * H, ra = R() * TAU0, rr = Math.sqrt(R());
+        let ox = 0, oy = 0;
+        if (p.area === 'circle') { ox = Math.cos(ra) * rr * p.aw / 2; oy = Math.sin(ra) * rr * p.ah / 2; }
+        else if (p.area === 'ring') { ox = Math.cos(ra) * p.aw / 2; oy = Math.sin(ra) * p.ah / 2; }
+        else if (p.area === 'box') { ox = (R() - 0.5) * p.aw; oy = (R() - 0.5) * p.ah; }
+        else if (p.area === 'line') { ox = (R() - 0.5) * p.aw; }
+        const base = p.dmode === 'outward' && (ox || oy) ? Math.atan2(oy, ox) : p.dir * Math.PI / 180;
+        const ang = base + (R() - 0.5) * p.spread * Math.PI / 180, sp = p.speed * (1 - p.speedVar * R());
+        let x = cx + ox, y = cy + oy, vx = Math.cos(ang) * sp, vy = Math.sin(ang) * sp;
+        const ph = R() * TAU0, bv = p.bright * (1 - p.brightVar * R());
+        for (let s = 0; s < Math.floor(a); s++) {
+          x += vx; y += vy; vy += p.grav; vx *= 1 - p.drag; vy *= 1 - p.drag;
+          if (p.floor > 0 && y > p.floor) { y = p.floor - (y - p.floor) * p.bounce; vy = -vy * p.bounce; vx *= 0.85; }
+        }
+        const k = a / lifeF, fd = p.fade === 'out' ? 1 - k : p.fade === 'in' ? k : p.fade === 'inout' ? Math.sin(Math.PI * k) : 1;
+        const v = bv * fd, sz = Math.max(1, Math.round(lerp(p.s0, p.s1, k)));
+        if (v <= 0.02) continue;
+        const sl = Math.hypot(vx, vy) || 1, wx = p.wob ? -vy / sl * Math.sin(a * 0.9 + ph) * p.wob : 0, wy = p.wob ? vx / sl * Math.sin(a * 0.9 + ph) * p.wob : 0;
+        const L = (p.streak - 1) * Math.hypot(vx, vy), steps = Math.ceil(L);
+        for (let s = 0; s <= steps; s++) { const q = steps ? s / steps : 0; stamp(x + wx - vx / sl * L * q, y + wy - vy / sl * L * q, sz, v * (1 - 0.6 * q)); }
+      }
+      const id = c.createImageData(W, H), d = id.data;
+      for (let i = 0; i < W * H; i++) if (buf[i] > 0) { d[i * 4] = col[0] * buf[i]; d[i * 4 + 1] = col[1] * buf[i]; d[i * 4 + 2] = col[2] * buf[i]; d[i * 4 + 3] = 255; }
+      c.putImageData(id, 0, 0);
     } },
   shape: { en: 'Shape', cat: 'gen', label: '도형', ins: [], params: [
     Sel('type', '종류', [['circle', '원'], ['ring', '링'], ['star', '별(둥근)'], ['cross', '십자'],

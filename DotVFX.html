@@ -83,7 +83,7 @@ h3{margin:12px 0 4px}
   <label>FPS <input id="fps" type="number" min="1" max="60" value="12"></label>
   <label><input id="loop" type="checkbox" checked> 루프</label>
   <label>배경 <select id="bg"><option value="dark">어둡게</option><option value="checker">체크</option></select></label>
-  <select id="preset"><option value="">프리셋</option><option value="fire">불꽃</option><option value="hit">타격</option><option value="slash">참격</option><option value="heal">힐</option></select>
+  <select id="preset"><option value="">프리셋</option><option value="fire">불꽃</option><option value="hit">타격</option><option value="slash">참격</option><option value="heal">힐</option><option value="burst">파티클 터짐</option></select>
   <button id="tlBtn" title="아래 타임라인 보이기/숨기기">타임라인</button>
   <button id="npBtn" title="새 프로젝트 만들기">새 프로젝트</button>
   <button id="stBtn" title="이름 붙여 저장하고 불러오기 (⌘S / Ctrl+S 저장)">저장함</button>
@@ -299,6 +299,12 @@ const PRESETS = {
     const rp = add('ramp', 360, 80, { steps: 4 }, [mk]);
     const gl = add('glow', 520, 80, { radius: 2, strength: 1 }, [rp]);
     add('output', 680, 80, { cols: S.frames }, [gl]);
+  },
+  burst() {
+    setS(false, 16);
+    const em = add('emitter', 20, 40, { count: 100, speed: 3.6, speedVar: 0.6, drag: 0.1, s0: 2, s1: 1, streak: 2.5, life: 0.9, lifeVar: 0.4 });
+    const pm = add('palmap', 200, 40, { cols: ['#3a0a0a', '#a3200f', '#ff5a14', '#ffb52e', '#fff3b0'], cut: 0.08 }, [em]);
+    add('output', 380, 40, { cols: S.frames }, [pm]);
   },
   hit() {
     setS(false, 12);
